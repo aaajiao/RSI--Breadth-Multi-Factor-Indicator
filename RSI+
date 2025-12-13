@@ -1,6 +1,34 @@
 //@version=5
 indicator("RSI+Breadth Multi-Factor", overlay=true, max_labels_count=500)
 
+//==============================================================================
+// SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
+//==============================================================================
+// Multi-factor scoring: RSI + Market Breadth (TW/FI) + Up/Down Volume
+// 多因子评分系统：RSI + 市场广度 (TW/FI) + 上涨/下跌成交量
+//
+// SIGNAL LEVELS 信号级别:
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │ Score │ Emoji │ Signal      │ 中文     │ Action 操作建议                  │
+// ├───────────────────────────────────────────────────────────────────────────┤
+// │ >= 6  │ 🚀    │ PANIC LOW   │ 恐慌低点 │ Strong buy 强烈买入              │
+// │ >= 4  │ 💰    │ BUY ZONE    │ 低吸区   │ Accumulate 分批建仓              │
+// │ -3~3  │ ⚪    │ HOLD        │ 持有     │ Hold position 持仓观望           │
+// │ <=-4↑ │ 🟡    │ ELEVATED    │ 高估     │ Hold cautious 持有但谨慎         │
+// │ <=-4↓ │ 🔶    │ CAUTION     │ 观望     │ Take profit 止盈                 │
+// │ <=-6↓ │ ⚠️    │ REDUCE      │ 减仓     │ Reduce position 减少仓位         │
+// └───────────────────────────────────────────────────────────────────────────┘
+// ↑ = Uptrend 上升趋势 (price > MA)  ↓ = Downtrend 下降趋势 (price < MA)
+//
+// RESONANCE 共振信号:
+// 🔥 Resonance Buy  共振买入 - Multiple markets in buy zone 多市场同时低吸
+// ❄️ Resonance Risk 共振风险 - Multiple markets in risk zone 多市场同时高估
+//
+// TREND FILTER 趋势过滤:
+// Price > MA = Risk signals suppressed 风险信号抑制，显示 ELEVATED
+// Price < MA = Risk signals active 风险信号激活
+//==============================================================================
+
 //========================
 // Mode (评分阈值调整)
 //========================
@@ -21,15 +49,20 @@ intradayMode = timeframe.isintraday  // 自动: 日内图表 = true, 日线/周�
 
 grp2 = "Signal Thresholds"
 // 信号触发阈值
-strongBotThreshold = input.int(6, "Strong Bottom Threshold", minval=3, maxval=10, group=grp2)
-botThreshold = input.int(4, "底部信号阈值", minval=2, maxval=8, group=grp2)
-topThreshold = input.int(-4, "顶部信号阈值", minval=-8, maxval=-2, group=grp2)
-strongTopThreshold = input.int(-6, "强顶部信号阈值", minval=-10, maxval=-3, group=grp2)
+strongBotThreshold = input.int(6, "Panic Low Threshold", minval=3, maxval=10, group=grp2)
+botThreshold = input.int(4, "Buy Zone Threshold", minval=2, maxval=8, group=grp2)
+topThreshold = input.int(-4, "Caution Zone Threshold", minval=-8, maxval=-2, group=grp2)
+strongTopThreshold = input.int(-6, "Risk Zone Threshold", minval=-10, maxval=-3, group=grp2)
 
 grp3 = "Signal Logic"
-cooldownIn = input.int(10, "同向信号冷却bars", minval=0, group=grp3)
-confirmBars = input.int(3, "共振窗口bars", minval=0, group=grp3)
-minAgree = input.int(2, "共振最少市场数(3选N)", minval=1, maxval=3, group=grp3)
+cooldownIn = input.int(10, "Cooldown Bars", minval=0, group=grp3)
+confirmBars = input.int(3, "Resonance Window", minval=0, group=grp3)
+minAgree = input.int(2, "Min Markets for Resonance", minval=1, maxval=3, group=grp3)
+
+// Trend Filter (趋势过滤)
+grp3b = "Trend Filter"
+trendMALen = input.int(10, "Trend MA Length", minval=5, maxval=50, group=grp3b, tooltip="Price above this MA = uptrend. Risk signals only trigger when price breaks below.")
+useTrendFilter = input.bool(true, "Enable Trend Filter", group=grp3b, tooltip="When enabled, risk signals only trigger if price is below trend MA.")
 
 grp5 = "Symbols"
 spySym = input.symbol("AMEX:SPY", "SPY", group=grp5)
@@ -103,6 +136,7 @@ f_applyCooldown(_rawSig, _coolBars, _lastBar) =>
 // Scoring Functions (核心评分逻辑)
 //========================
 // RSI 评分: 底部正分，顶部负分
+// 优化: 收紧顶部阈值 (60→65)
 f_rsiScore(_rsi) =>
     score = 0.0
     if not na(_rsi)
@@ -110,14 +144,14 @@ f_rsiScore(_rsi) =>
             score := 2
         else if _rsi < 40
             score := 1
-        else if _rsi > 70
-            score := -2
-        else if _rsi > 60
-            score := -1
+        else if _rsi > 75
+            score := -2  // 更严格 (原70)
+        else if _rsi > 65
+            score := -1  // 更严格 (原60)
     score
 
-// FI (50日) 评分: 底部核心，权重1.5x
-// FI越低越是底部，FI越高对顶部影响小
+// FI (50日) 评分: 底部核心
+// 优化: 增加顶部权重，减少假信号
 f_fiScore(_fi) =>
     score = 0.0
     if not na(_fi)
@@ -127,26 +161,29 @@ f_fiScore(_fi) =>
             score := 2
         else if _fi < 45
             score := 1
-        else if _fi > 75
-            score := -1  // FI高对顶部影响较小
+        else if _fi > 85
+            score := -2  // 新增: 极度超买才大扣分
+        else if _fi > 78
+            score := -1  // 更严格 (原75)
     score
 
-// TW (20日) 评分: 顶部核心，权重1.5x
-// TW越高越是顶部，TW越低对底部影响小
+// TW (20日) 评分: 顶部核心
+// 优化: 大幅收紧阈值减少假顶部信号
 f_twScore(_tw) =>
     score = 0.0
     if not na(_tw)
-        if _tw > 75
-            score := -3  // 极度超买
-        else if _tw > 65
-            score := -2
-        else if _tw > 55
-            score := -1
-        else if _tw < 35
-            score := 1  // TW低对底部影响较小
+        if _tw > 82
+            score := -3  // 更严格 (原75)
+        else if _tw > 72
+            score := -2  // 更严格 (原65)
+        else if _tw > 68
+            score := -1  // 大幅收紧 (原55)
+        else if _tw < 30
+            score := 1  // 更严格 (原35)
     score
 
 // Up/Down Volume 评分
+// 优化: 收紧顶部阈值
 f_volScore(_uvol, _dvol) =>
     score = 0.0
     if not na(_uvol) and not na(_dvol) and _dvol > 0
@@ -155,10 +192,10 @@ f_volScore(_uvol, _dvol) =>
             score := 2  // 下跌成交量主导 -> 可能见底
         else if ratio < 0.8
             score := 1
-        else if ratio > 2.0
-            score := -2  // 上涨成交量主导 -> 可能见顶
-        else if ratio > 1.5
-            score := -1
+        else if ratio > 2.5
+            score := -2  // 更严格 (原2.0)
+        else if ratio > 1.8
+            score := -1  // 更严格 (原1.5)
     score
 
 // 综合评分函数
@@ -208,13 +245,28 @@ dvolq = f_secDaily(dvolqSym, close)
 [iwmScore, iwmRsiS, iwmFiS, iwmTwS, iwmVolS] = f_totalScore(iwmRSI, r2tw, r2fi, uvol, dvol, intradayMode)
 
 //========================
-// Signal Generation (基于评分)
+// Signal Generation (基于评分 + 趋势过滤)
 //========================
+// Trend MA calculation (趋势均线)
+spyTrendMA = ta.sma(spyC, trendMALen)
+qqqTrendMA = ta.sma(qqqC, trendMALen)
+iwmTrendMA = ta.sma(iwmC, trendMALen)
+
+// 趋势状态: 价格在MA之上 = 上升趋势
+spyUptrend = spyC > spyTrendMA
+qqqUptrend = qqqC > qqqTrendMA
+iwmUptrend = iwmC > iwmTrendMA
+
 // SPY signals
 spyStrongBot = spyScore >= adjStrongBotThreshold
 spyBot = spyScore >= adjBotThreshold and spyScore < adjStrongBotThreshold
-spyTop = spyScore <= adjTopThreshold and spyScore > adjStrongTopThreshold
-spyStrongTop = spyScore <= adjStrongTopThreshold
+// 风险信号: 只有趋势过滤关闭 OR 价格跌破MA才触发
+spyTopCondition = spyScore <= adjTopThreshold and spyScore > adjStrongTopThreshold
+spyStrongTopCondition = spyScore <= adjStrongTopThreshold
+spyTop = spyTopCondition and (not useTrendFilter or not spyUptrend)
+spyStrongTop = spyStrongTopCondition and (not useTrendFilter or not spyUptrend)
+// 高估但趋势良好 (用于Dashboard显示)
+spyElevated = (spyTopCondition or spyStrongTopCondition) and spyUptrend and useTrendFilter
 
 spyBotRaw = spyStrongBot or spyBot
 spyTopRaw = spyStrongTop or spyTop
@@ -222,8 +274,11 @@ spyTopRaw = spyStrongTop or spyTop
 // QQQ signals
 qqqStrongBot = qqqScore >= adjStrongBotThreshold
 qqqBot = qqqScore >= adjBotThreshold and qqqScore < adjStrongBotThreshold
-qqqTop = qqqScore <= adjTopThreshold and qqqScore > adjStrongTopThreshold
-qqqStrongTop = qqqScore <= adjStrongTopThreshold
+qqqTopCondition = qqqScore <= adjTopThreshold and qqqScore > adjStrongTopThreshold
+qqqStrongTopCondition = qqqScore <= adjStrongTopThreshold
+qqqTop = qqqTopCondition and (not useTrendFilter or not qqqUptrend)
+qqqStrongTop = qqqStrongTopCondition and (not useTrendFilter or not qqqUptrend)
+qqqElevated = (qqqTopCondition or qqqStrongTopCondition) and qqqUptrend and useTrendFilter
 
 qqqBotRaw = qqqStrongBot or qqqBot
 qqqTopRaw = qqqStrongTop or qqqTop
@@ -231,8 +286,11 @@ qqqTopRaw = qqqStrongTop or qqqTop
 // IWM signals
 iwmStrongBot = iwmScore >= adjStrongBotThreshold
 iwmBot = iwmScore >= adjBotThreshold and iwmScore < adjStrongBotThreshold
-iwmTop = iwmScore <= adjTopThreshold and iwmScore > adjStrongTopThreshold
-iwmStrongTop = iwmScore <= adjStrongTopThreshold
+iwmTopCondition = iwmScore <= adjTopThreshold and iwmScore > adjStrongTopThreshold
+iwmStrongTopCondition = iwmScore <= adjStrongTopThreshold
+iwmTop = iwmTopCondition and (not useTrendFilter or not iwmUptrend)
+iwmStrongTop = iwmStrongTopCondition and (not useTrendFilter or not iwmUptrend)
+iwmElevated = (iwmTopCondition or iwmStrongTopCondition) and iwmUptrend and useTrendFilter
 
 iwmBotRaw = iwmStrongBot or iwmBot
 iwmTopRaw = iwmStrongTop or iwmTop
@@ -307,42 +365,49 @@ displayTwS = showSpy ? spyTwS : showQqq ? qqqTwS : showIwm ? iwmTwS : (spyTwS + 
 displayVolS = showSpy ? spyVolS : showQqq ? qqqVolS : showIwm ? iwmVolS : (spyVolS + qqqVolS + iwmVolS) / 3
 
 //========================
-// Plot shapes (区分强信号/普通信号)
-// 信号图标说明:
-// 🚀 = 强底部 (Strong Bottom, Score >= 6)
-// 📈 = 底部 (Bottom, Score >= 4)
-// 💥 = 强顶部 (Strong Top, Score <= -6)
-// 📉 = 顶部 (Top, Score <= -4)
-// 🔥 = 共振底部 (多市场共振)
-// ❄️ = 共振顶部 (多市场共振)
+// Plot shapes (新术语)
+// 🚀 = Panic Low (恐慌低点, Score >= 6) - 强烈买入机会
+// � = Buy Zone (低吸区, Score >= 4) - 分批建仓
+// ⚠️ = Reduce (减仓, Score <= -6 且趋势向下) - 高风险
+// � = Caution (观望, Score <= -4 且趋势向下) - 止盈观望
+// � = Elevated (高估但趋势良好) - 持有但谨慎
+// �🔥 = Resonance Buy (多市场共振买入)
+// ❄️ = Resonance Risk (多市场共振风险)
 //========================
 // SPY
-plotshape(showSpy and spyBotTrig and spyStrongBot, title="SPY Strong Bottom", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
-plotshape(showSpy and spyBotTrig and spyBot, title="SPY Bottom", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
-plotshape(showSpy and spyTopTrig and spyStrongTop, title="SPY Strong Top", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="💥")
-plotshape(showSpy and spyTopTrig and spyTop, title="SPY Top", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.small, text="📉")
+plotshape(showSpy and spyBotTrig and spyStrongBot, title="SPY Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
+plotshape(showSpy and spyBotTrig and spyBot, title="SPY Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="�")
+plotshape(showSpy and spyTopTrig and spyStrongTop, title="SPY Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
+plotshape(showSpy and spyTopTrig and spyTop, title="SPY Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="�")
+plotshape(showSpy and spyElevated and not spyElevated[1], title="SPY Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="🟡")
 
 // QQQ
-plotshape(showQqq and qqqBotTrig and qqqStrongBot, title="QQQ Strong Bottom", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
-plotshape(showQqq and qqqBotTrig and qqqBot, title="QQQ Bottom", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
-plotshape(showQqq and qqqTopTrig and qqqStrongTop, title="QQQ Strong Top", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="💥")
-plotshape(showQqq and qqqTopTrig and qqqTop, title="QQQ Top", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.small, text="📉")
+plotshape(showQqq and qqqBotTrig and qqqStrongBot, title="QQQ Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
+plotshape(showQqq and qqqBotTrig and qqqBot, title="QQQ Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="�")
+plotshape(showQqq and qqqTopTrig and qqqStrongTop, title="QQQ Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
+plotshape(showQqq and qqqTopTrig and qqqTop, title="QQQ Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="�")
+plotshape(showQqq and qqqElevated and not qqqElevated[1], title="QQQ Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="🟡")
 
 // IWM
-plotshape(showIwm and iwmBotTrig and iwmStrongBot, title="IWM Strong Bottom", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
-plotshape(showIwm and iwmBotTrig and iwmBot, title="IWM Bottom", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
-plotshape(showIwm and iwmTopTrig and iwmStrongTop, title="IWM Strong Top", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="💥")
-plotshape(showIwm and iwmTopTrig and iwmTop, title="IWM Top", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0), size=size.small, text="📉")
+plotshape(showIwm and iwmBotTrig and iwmStrongBot, title="IWM Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
+plotshape(showIwm and iwmBotTrig and iwmBot, title="IWM Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="�")
+plotshape(showIwm and iwmTopTrig and iwmStrongTop, title="IWM Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
+plotshape(showIwm and iwmTopTrig and iwmTop, title="IWM Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="�")
+plotshape(showIwm and iwmElevated and not iwmElevated[1], title="IWM Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="🟡")
 
 // AGG 共振
-plotshape(showAgg and aggBottomEdge, title="AGG Bottom (Edge)", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, text="🔥")
-plotshape(showAgg and aggTopEdge, title="AGG Top (Edge)", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, text="❄️")
+plotshape(showAgg and aggBottomEdge, title="Resonance Buy", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, text="🔥")
+plotshape(showAgg and aggTopEdge, title="Resonance Risk", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, text="❄️")
 
 //========================
-// Dashboard
+// Dashboard (渐进式风险描述)
 //========================
+// 选择当前趋势状态
+displayUptrend = showSpy ? spyUptrend : showQqq ? qqqUptrend : showIwm ? iwmUptrend : (spyUptrend and qqqUptrend) or (spyUptrend and iwmUptrend) or (qqqUptrend and iwmUptrend)
+displayElevated = showSpy ? spyElevated : showQqq ? qqqElevated : showIwm ? iwmElevated : (spyElevated or qqqElevated or iwmElevated)
+
 if showDashboard and barstate.islast
-    var table dashboard = table.new(position.top_right, 3, 6, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
+    var table dashboard = table.new(position.top_right, 3, 7, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
     
     // Header
     table.cell(dashboard, 0, 0, "Factor", text_color=color.white, text_size=size.small)
@@ -373,30 +438,43 @@ if showDashboard and barstate.islast
     table.cell(dashboard, 1, 4, str.tostring(displayVolS, "#.#"), text_color=volColor, text_size=size.small)
     table.cell(dashboard, 2, 4, "1x", text_color=color.gray, text_size=size.small)
     
-    // Total
-    totalColor = displayScore >= adjBotThreshold ? color.lime : displayScore <= adjTopThreshold ? color.red : color.gray
-    table.cell(dashboard, 0, 5, "Total", text_color=color.white, text_size=size.normal)
-    table.cell(dashboard, 1, 5, str.tostring(displayScore, "#.#"), text_color=totalColor, text_size=size.normal)
-    signalText = displayScore >= adjStrongBotThreshold ? "STRONG BUY" : displayScore >= adjBotThreshold ? "BUY" : displayScore <= adjStrongTopThreshold ? "STRONG SELL" : displayScore <= adjTopThreshold ? "SELL" : "NEUTRAL"
-    table.cell(dashboard, 2, 5, signalText, text_color=totalColor, text_size=size.small)
+    // Trend status
+    trendText = displayUptrend ? "↑ UPTREND" : "↓ DOWNTREND"
+    trendColor = displayUptrend ? color.lime : color.red
+    table.cell(dashboard, 0, 5, "Trend", text_color=color.white, text_size=size.small)
+    table.cell(dashboard, 1, 5, trendText, text_color=trendColor, text_size=size.small)
+    table.cell(dashboard, 2, 5, str.tostring(trendMALen) + "MA", text_color=color.gray, text_size=size.small)
+    
+    // Total with gradual risk descriptions
+    totalColor = displayScore >= adjBotThreshold ? color.lime : displayScore <= adjTopThreshold ? (displayUptrend ? color.yellow : color.red) : color.gray
+    table.cell(dashboard, 0, 6, "Total", text_color=color.white, text_size=size.normal)
+    table.cell(dashboard, 1, 6, str.tostring(displayScore, "#.#"), text_color=totalColor, text_size=size.normal)
+    // 渐进式风险描述
+    signalText = displayScore >= adjStrongBotThreshold ? "PANIC LOW" : 
+                 displayScore >= adjBotThreshold ? "ACCUMULATE" : 
+                 displayElevated ? "ELEVATED" :
+                 displayScore <= adjStrongTopThreshold ? "REDUCE" : 
+                 displayScore <= adjTopThreshold ? "CAUTION" : 
+                 "HOLD"
+    table.cell(dashboard, 2, 6, signalText, text_color=totalColor, text_size=size.small)
 
 //========================
 // Alerts
 //========================
-alertcondition(spyBotTrig and spyStrongBot, title="SPY 强底部", message="SPY 强底部信号 (Score >= 6) - {{ticker}} @ {{time}}")
-alertcondition(spyBotTrig, title="SPY 底部", message="SPY 底部信号触发 - {{ticker}} @ {{time}}")
-alertcondition(spyTopTrig and spyStrongTop, title="SPY 强顶部", message="SPY 强顶部信号 (Score <= -6) - {{ticker}} @ {{time}}")
-alertcondition(spyTopTrig, title="SPY 顶部", message="SPY 顶部信号触发 - {{ticker}} @ {{time}}")
+alertcondition(spyBotTrig and spyStrongBot, title="SPY Panic Low", message="SPY Panic Low - Strong buy opportunity - {{ticker}} @ {{time}}")
+alertcondition(spyBotTrig, title="SPY Buy Zone", message="SPY entered Buy Zone - {{ticker}} @ {{time}}")
+alertcondition(spyTopTrig and spyStrongTop, title="SPY Reduce", message="SPY Reduce signal - High risk, consider reducing position - {{ticker}} @ {{time}}")
+alertcondition(spyTopTrig, title="SPY Caution", message="SPY Caution - Consider taking profits - {{ticker}} @ {{time}}")
 
-alertcondition(qqqBotTrig and qqqStrongBot, title="QQQ 强底部", message="QQQ 强底部信号 - {{ticker}} @ {{time}}")
-alertcondition(qqqBotTrig, title="QQQ 底部", message="QQQ 底部信号触发 - {{ticker}} @ {{time}}")
-alertcondition(qqqTopTrig and qqqStrongTop, title="QQQ 强顶部", message="QQQ 强顶部信号 - {{ticker}} @ {{time}}")
-alertcondition(qqqTopTrig, title="QQQ 顶部", message="QQQ 顶部信号触发 - {{ticker}} @ {{time}}")
+alertcondition(qqqBotTrig and qqqStrongBot, title="QQQ Panic Low", message="QQQ Panic Low - Strong buy opportunity - {{ticker}} @ {{time}}")
+alertcondition(qqqBotTrig, title="QQQ Buy Zone", message="QQQ entered Buy Zone - {{ticker}} @ {{time}}")
+alertcondition(qqqTopTrig and qqqStrongTop, title="QQQ Reduce", message="QQQ Reduce signal - High risk - {{ticker}} @ {{time}}")
+alertcondition(qqqTopTrig, title="QQQ Caution", message="QQQ Caution - Consider taking profits - {{ticker}} @ {{time}}")
 
-alertcondition(iwmBotTrig and iwmStrongBot, title="IWM 强底部", message="IWM 强底部信号 - {{ticker}} @ {{time}}")
-alertcondition(iwmBotTrig, title="IWM 底部", message="IWM 底部信号触发 - {{ticker}} @ {{time}}")
-alertcondition(iwmTopTrig and iwmStrongTop, title="IWM 强顶部", message="IWM 强顶部信号 - {{ticker}} @ {{time}}")
-alertcondition(iwmTopTrig, title="IWM 顶部", message="IWM 顶部信号触发 - {{ticker}} @ {{time}}")
+alertcondition(iwmBotTrig and iwmStrongBot, title="IWM Panic Low", message="IWM Panic Low - Strong buy opportunity - {{ticker}} @ {{time}}")
+alertcondition(iwmBotTrig, title="IWM Buy Zone", message="IWM entered Buy Zone - {{ticker}} @ {{time}}")
+alertcondition(iwmTopTrig and iwmStrongTop, title="IWM Reduce", message="IWM Reduce signal - High risk - {{ticker}} @ {{time}}")
+alertcondition(iwmTopTrig, title="IWM Caution", message="IWM Caution - Consider taking profits - {{ticker}} @ {{time}}")
 
-alertcondition(aggBottomEdge, title="共振底部", message="共振底部触发：多市场在窗口内共振 - {{ticker}} @ {{time}}")
-alertcondition(aggTopEdge, title="共振顶部", message="共振顶部触发：多市场在窗口内共振 - {{ticker}} @ {{time}}")
+alertcondition(aggBottomEdge, title="Resonance Buy", message="Multi-market resonance buy signal - {{ticker}} @ {{time}}")
+alertcondition(aggTopEdge, title="Resonance Risk", message="Multi-market resonance risk signal - {{ticker}} @ {{time}}")
