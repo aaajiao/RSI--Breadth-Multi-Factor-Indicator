@@ -2,7 +2,9 @@
 
 **Multi-factor scoring system for US market timing | 美股多因子择时评分系统**
 
-[![TradingView](https://img.shields.io/badge/TradingView-Pine%20Script%20v5-blue)](https://www.tradingview.com/)
+[![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/)
+[![Pine Script](https://img.shields.io/badge/Pine%20Script-v5-brightgreen)](https://www.tradingview.com/pine-script-docs/en/v5/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
