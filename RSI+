@@ -12,10 +12,10 @@ indicator("RSI+Breadth Multi-Factor", overlay=true, max_labels_count=500)
 // │ Score │ Emoji │ Signal      │ 中文     │ Action 操作建议                  │
 // ├───────────────────────────────────────────────────────────────────────────┤
 // │ >= 6  │ 🚀    │ PANIC LOW   │ 恐慌低点 │ Strong buy 强烈买入              │
-// │ >= 4  │ 💰    │ BUY ZONE    │ 低吸区   │ Accumulate 分批建仓              │
-// │ -3~3  │ ⚪    │ HOLD        │ 持有     │ Hold position 持仓观望           │
-// │ <=-4↑ │ 🟡    │ ELEVATED    │ 高估     │ Hold cautious 持有但谨慎         │
-// │ <=-4↓ │ 🔶    │ CAUTION     │ 观望     │ Take profit 止盈                 │
+// │ >= 4  │ 📈    │ BUY ZONE    │ 低吸区   │ Accumulate 分批建仓              │
+// │ -3~3  │ -     │ HOLD        │ 持有     │ Hold position 持仓观望           │
+// │ <=-4↑ │ ⭐    │ ELEVATED    │ 高估     │ Hold cautious 持有但谨慎         │
+// │ <=-4↓ │ ⚡    │ CAUTION     │ 观望     │ Take profit 止盈                 │
 // │ <=-6↓ │ ⚠️    │ REDUCE      │ 减仓     │ Reduce position 减少仓位         │
 // └───────────────────────────────────────────────────────────────────────────┘
 // ↑ = Uptrend 上升趋势 (price > MA)  ↓ = Downtrend 下降趋势 (price < MA)
@@ -25,7 +25,7 @@ indicator("RSI+Breadth Multi-Factor", overlay=true, max_labels_count=500)
 // ❄️ Resonance Risk 共振风险 - Multiple markets in risk zone 多市场同时高估
 //
 // TREND FILTER 趋势过滤:
-// Price > MA = Risk signals suppressed 风险信号抑制，显示 ELEVATED
+// Price > MA = Risk signals suppressed 风险信号抑制，显示 ELEVATED (H)
 // Price < MA = Risk signals active 风险信号激活
 //==============================================================================
 
@@ -376,24 +376,24 @@ displayVolS = showSpy ? spyVolS : showQqq ? qqqVolS : showIwm ? iwmVolS : (spyVo
 //========================
 // SPY
 plotshape(showSpy and spyBotTrig and spyStrongBot, title="SPY Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
-plotshape(showSpy and spyBotTrig and spyBot, title="SPY Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="�")
+plotshape(showSpy and spyBotTrig and spyBot, title="SPY Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
 plotshape(showSpy and spyTopTrig and spyStrongTop, title="SPY Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
-plotshape(showSpy and spyTopTrig and spyTop, title="SPY Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="�")
-plotshape(showSpy and spyElevated and not spyElevated[1], title="SPY Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="🟡")
+plotshape(showSpy and spyTopTrig and spyTop, title="SPY Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
+plotshape(showSpy and spyElevated and not spyElevated[1], title="SPY Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="⭐")
 
 // QQQ
 plotshape(showQqq and qqqBotTrig and qqqStrongBot, title="QQQ Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
-plotshape(showQqq and qqqBotTrig and qqqBot, title="QQQ Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="�")
+plotshape(showQqq and qqqBotTrig and qqqBot, title="QQQ Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
 plotshape(showQqq and qqqTopTrig and qqqStrongTop, title="QQQ Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
-plotshape(showQqq and qqqTopTrig and qqqTop, title="QQQ Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="�")
-plotshape(showQqq and qqqElevated and not qqqElevated[1], title="QQQ Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="🟡")
+plotshape(showQqq and qqqTopTrig and qqqTop, title="QQQ Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
+plotshape(showQqq and qqqElevated and not qqqElevated[1], title="QQQ Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="⭐")
 
 // IWM
 plotshape(showIwm and iwmBotTrig and iwmStrongBot, title="IWM Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
-plotshape(showIwm and iwmBotTrig and iwmBot, title="IWM Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="�")
+plotshape(showIwm and iwmBotTrig and iwmBot, title="IWM Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
 plotshape(showIwm and iwmTopTrig and iwmStrongTop, title="IWM Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
-plotshape(showIwm and iwmTopTrig and iwmTop, title="IWM Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="�")
-plotshape(showIwm and iwmElevated and not iwmElevated[1], title="IWM Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="🟡")
+plotshape(showIwm and iwmTopTrig and iwmTop, title="IWM Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
+plotshape(showIwm and iwmElevated and not iwmElevated[1], title="IWM Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="⭐")
 
 // AGG 共振
 plotshape(showAgg and aggBottomEdge, title="Resonance Buy", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, text="🔥")

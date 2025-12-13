@@ -35,10 +35,10 @@ A quantitative indicator that combines **RSI**, **market breadth** (% above 20/5
 | Score | Emoji | Signal | 中文 | Action |
 |:-----:|:-----:|--------|:----:|--------|
 | ≥ 6 | 🚀 | **PANIC LOW** | 恐慌低点 | Strong buy 强烈买入 |
-| ≥ 4 | 💰 | **BUY ZONE** | 低吸区 | Accumulate 分批建仓 |
-| -3~3 | ⚪ | **HOLD** | 持有 | Hold position 持仓观望 |
-| ≤ -4↑ | 🟡 | **ELEVATED** | 高估 | Hold cautious 持有但谨慎 |
-| ≤ -4↓ | 🔶 | **CAUTION** | 观望 | Take profit 止盈 |
+| ≥ 4 | 📈 | **BUY ZONE** | 低吸区 | Accumulate 分批建仓 |
+| -3~3 | - | **HOLD** | 持有 | Hold position 持仓观望 |
+| ≤ -4↑ | ⭐ | **ELEVATED** | 高估 | Hold cautious 持有但谨慎 |
+| ≤ -4↓ | ⚡ | **CAUTION** | 观望 | Take profit 止盈 |
 | ≤ -6↓ | ⚠️ | **REDUCE** | 减仓 | Reduce position 减少仓位 |
 
 > **↑ = Uptrend** (price > MA) | **↓ = Downtrend** (price < MA)
@@ -151,11 +151,11 @@ Available alerts for each market (SPY/QQQ/IWM):
 
 **Key feature**: Risk signals (CAUTION/REDUCE) only trigger when **price is below the trend MA**.
 
-When price is above MA (uptrend), the indicator shows **ELEVATED** 🟡 instead, preventing premature exits during strong rallies.
+When price is above MA (uptrend), the indicator shows **ELEVATED** ⭐ instead, preventing premature exits during strong rallies.
 
 **核心功能**：风险信号（观望/减仓）仅在 **价格跌破趋势均线** 时触发。
 
-当价格在均线之上（上升趋势）时，指标显示 **高估** 🟡，避免在强势上涨中过早离场。
+当价格在均线之上（上升趋势）时，指标显示 **高估** ⭐，避免在强势上涨中过早离场。
 
 ---
 
