@@ -346,10 +346,17 @@ aggTopEdge    = aggTop and not aggTop[1]
 //========================
 // Plot selection
 //========================
-currentTicker = ticker.standard(syminfo.tickerid)
-isSpy = currentTicker == spySym
-isQqq = currentTicker == qqqSym
-isIwm = currentTicker == iwmSym
+// 使用 syminfo.ticker 获取纯品种名称 (不含交易所前缀)
+tickerName = str.upper(syminfo.ticker)
+
+// S&P 500 系列: SPY, SPX, ES (期货), /ES, MES
+isSpy = str.contains(tickerName, "SPY") or str.contains(tickerName, "SPX") or tickerName == "ES" or tickerName == "MES" or str.contains(tickerName, "ES1!")
+
+// NASDAQ 100 系列: QQQ, NDX, NQ (期货), /NQ, MNQ  
+isQqq = str.contains(tickerName, "QQQ") or str.contains(tickerName, "NDX") or tickerName == "NQ" or tickerName == "MNQ" or str.contains(tickerName, "NQ1!")
+
+// Russell 2000 系列: IWM, RUT, RTY (期货), /RTY, M2K
+isIwm = str.contains(tickerName, "IWM") or str.contains(tickerName, "RUT") or str.contains(tickerName, "RTY") or tickerName == "M2K"
 
 modePlot = plotMode == "AUTO" ? (isSpy ? "SPY" : isQqq ? "QQQ" : isIwm ? "IWM" : "AGG(共振)") : plotMode
 showSpy = modePlot == "SPY"
