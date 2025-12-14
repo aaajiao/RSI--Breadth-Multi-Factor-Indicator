@@ -466,22 +466,21 @@ if showDashboard and barstate.islast
     table.cell(dashboard, 2, 6, signalText, text_color=totalColor, text_size=size.small)
 
 //========================
-// Alerts
+// Alerts - AUTO模式 (推荐使用，根据当前图表自动选择)
 //========================
-alertcondition(spyBotTrig and spyStrongBot, title="SPY Panic Low", message="SPY Panic Low - Strong buy opportunity - {{ticker}} @ {{time}}")
-alertcondition(spyBotTrig, title="SPY Buy Zone", message="SPY entered Buy Zone - {{ticker}} @ {{time}}")
-alertcondition(spyTopTrig and spyStrongTop, title="SPY Reduce", message="SPY Reduce signal - High risk, consider reducing position - {{ticker}} @ {{time}}")
-alertcondition(spyTopTrig, title="SPY Caution", message="SPY Caution - Consider taking profits - {{ticker}} @ {{time}}")
+// 当前图表的买入/卖出信号 (基于AUTO识别)
+autoBotTrig = (isSpy and spyBotTrig) or (isQqq and qqqBotTrig) or (isIwm and iwmBotTrig)
+autoStrongBot = (isSpy and spyBotTrig and spyStrongBot) or (isQqq and qqqBotTrig and qqqStrongBot) or (isIwm and iwmBotTrig and iwmStrongBot)
+autoTopTrig = (isSpy and spyTopTrig) or (isQqq and qqqTopTrig) or (isIwm and iwmTopTrig)
+autoStrongTop = (isSpy and spyTopTrig and spyStrongTop) or (isQqq and qqqTopTrig and qqqStrongTop) or (isIwm and iwmTopTrig and iwmStrongTop)
 
-alertcondition(qqqBotTrig and qqqStrongBot, title="QQQ Panic Low", message="QQQ Panic Low - Strong buy opportunity - {{ticker}} @ {{time}}")
-alertcondition(qqqBotTrig, title="QQQ Buy Zone", message="QQQ entered Buy Zone - {{ticker}} @ {{time}}")
-alertcondition(qqqTopTrig and qqqStrongTop, title="QQQ Reduce", message="QQQ Reduce signal - High risk - {{ticker}} @ {{time}}")
-alertcondition(qqqTopTrig, title="QQQ Caution", message="QQQ Caution - Consider taking profits - {{ticker}} @ {{time}}")
+// 智能 Alert - 只需设置这几个即可
+alertcondition(autoStrongBot, title="🚀 Panic Low", message="🚀 Panic Low - Strong buy opportunity - {{ticker}} @ {{time}}")
+alertcondition(autoBotTrig, title="📈 Buy Zone", message="📈 Buy Zone entry signal - {{ticker}} @ {{time}}")
+alertcondition(autoStrongTop, title="⚠️ Reduce", message="⚠️ Reduce - High risk, consider reducing - {{ticker}} @ {{time}}")
+alertcondition(autoTopTrig, title="⚡ Caution", message="⚡ Caution - Consider taking profits - {{ticker}} @ {{time}}")
+alertcondition(aggBottomEdge, title="🔥 Resonance Buy", message="🔥 Multi-market resonance buy - {{ticker}} @ {{time}}")
+alertcondition(aggTopEdge, title="❄️ Resonance Risk", message="❄️ Multi-market resonance risk - {{ticker}} @ {{time}}")
 
-alertcondition(iwmBotTrig and iwmStrongBot, title="IWM Panic Low", message="IWM Panic Low - Strong buy opportunity - {{ticker}} @ {{time}}")
-alertcondition(iwmBotTrig, title="IWM Buy Zone", message="IWM entered Buy Zone - {{ticker}} @ {{time}}")
-alertcondition(iwmTopTrig and iwmStrongTop, title="IWM Reduce", message="IWM Reduce signal - High risk - {{ticker}} @ {{time}}")
-alertcondition(iwmTopTrig, title="IWM Caution", message="IWM Caution - Consider taking profits - {{ticker}} @ {{time}}")
 
-alertcondition(aggBottomEdge, title="Resonance Buy", message="Multi-market resonance buy signal - {{ticker}} @ {{time}}")
-alertcondition(aggTopEdge, title="Resonance Risk", message="Multi-market resonance risk signal - {{ticker}} @ {{time}}")
+
