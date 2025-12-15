@@ -1,32 +1,28 @@
-# RSI+ Breadth Multi-Factor Indicator
+# RSI+ Breadth Multi-Factor Indicator v6
 
-**Multi-factor scoring system for US market timing | 美股多因子择时评分系统**
+**Adaptive Scoring System for US Market Timing | 美股多因子自适应择时系统**
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/)
-[![Pine Script](https://img.shields.io/badge/Pine%20Script-v5-brightgreen)](https://www.tradingview.com/pine-script-docs/en/v5/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-docs/en/v6/)
 
 ---
 
 ## Overview | 概述
 
-A quantitative indicator that combines **RSI**, **market breadth** (% above 20/50-day MA), and **up/down volume ratio** to generate actionable buy/sell signals for SPY, QQQ, and IWM.
+A quantitative indicator that combines **RSI**, **Market Breadth**, **Volume Ratio**, and **Divergence** to generate actionable buy/sell signals. Version 6 introduces **Adaptive Technology**, automatically adjusting signal thresholds based on market volatility.
 
-这是一个结合 **RSI**、**市场广度**（站上20/50日均线比例）和 **涨跌成交量比** 的量化指标，为 SPY、QQQ 和 IWM 生成可操作的买卖信号。
+这是一个结合 **RSI**、**市场广度**、**成交量比** 和 **背离** 的量化指标。v6 版本引入了 **自适应技术**，能根据市场波动率自动调整信号阈值。
 
 ---
 
-## Features | 功能特点
+## What's New in v6 | v6 新功能
 
-| Feature | 功能 |
-|---------|------|
-| 🎯 Multi-factor scoring (-10 to +10) | 多因子评分系统 (-10 到 +10) |
-| 📊 RSI + Breadth + Volume integration | RSI + 广度 + 成交量三重验证 |
-| 🔀 Three markets: SPY, QQQ, IWM | 三大市场：SPY、QQQ、IWM |
-| 🔥 Cross-market resonance detection | 跨市场共振信号检测 |
-| 📈 Trend filter (MA-based) | 趋势过滤（均线判断） |
-| ⏰ Auto-adapts to intraday timeframes | 自动适配日内时间周期 |
-| 🎚️ Three modes: Aggressive/Standard/Conservative | 三种模式：激进/标准/保守 |
+| Feature | Description | 中文说明 |
+|:---:|---|---|
+| 🧠 | **Adaptive Thresholds** | **自适应阈值**：基于历史波动率自动调整 RSI 超买超卖线 |
+| 💎 | **Divergence Detection** | **背离检测**：基于 Z-Score 强度的价格与 RSI 背离 |
+| ⚡ | **Auto Mode** | **自动模式**：高波动时自动切换为自适应，低波动保持固定 |
+| 📉 | **Intraday Breadth** | **日内广度**：使用 `USI:ADD` (涨跌家数差) 支持小时图广度分析 |
 
 ---
 
@@ -36,147 +32,54 @@ A quantitative indicator that combines **RSI**, **market breadth** (% above 20/5
 |:-----:|:-----:|--------|:----:|--------|
 | ≥ 6 | 🚀 | **PANIC LOW** | 恐慌低点 | Strong buy 强烈买入 |
 | ≥ 4 | 📈 | **BUY ZONE** | 低吸区 | Accumulate 分批建仓 |
+| Div | 💎 | **DIVERGENCE** | 背离 | Reversal Confirmation 反转确认 |
 | -3~3 | - | **HOLD** | 持有 | Hold position 持仓观望 |
 | ≤ -4↑ | ⭐ | **ELEVATED** | 高估 | Hold cautious 持有但谨慎 |
 | ≤ -4↓ | ⚡ | **CAUTION** | 观望 | Take profit 止盈 |
 | ≤ -6↓ | ⚠️ | **REDUCE** | 减仓 | Reduce position 减少仓位 |
 
-> **↑ = Uptrend** (price > MA) | **↓ = Downtrend** (price < MA)
-
-### Resonance Signals | 共振信号
-
-| Emoji | Signal | Description |
-|:-----:|--------|-------------|
-| 🔥 | Resonance Buy | Multiple markets in buy zone 多市场同时低吸 |
-| ❄️ | Resonance Risk | Multiple markets in risk zone 多市场同时高估 |
+> **↑ = Uptrend** (Price > MA) | **↓ = Downtrend** (Price < MA)
 
 ---
 
-## Scoring Logic | 评分逻辑
+## Adaptive Logic | 自适应逻辑
 
-### Factors | 因子
+### How it works | 工作原理
+The indicator monitors the volatility of RSI (Standard Deviation).
+-   **Low Volatility**: Uses classic fixed thresholds (30/70) to avoid noise.
+-   **High Volatility**: Switches to percentiles (e.g., historical 10% / 90%) to catch extremes that fixed levels might miss.
 
-| Factor | Weight | Buy Score | Sell Score |
-|--------|--------|-----------|------------|
-| **RSI** | 1x | RSI < 30 → +2, < 40 → +1 | RSI > 75 → -2, > 65 → -1 |
-| **FI (50D MA%)** | Bottom focus | < 25% → +3, < 35% → +2 | > 85% → -2, > 78% → -1 |
-| **TW (20D MA%)** | Top focus | < 30% → +1 | > 82% → -3, > 72% → -2 |
-| **Volume Ratio** | 1x | UVOL/DVOL < 0.5 → +2 | > 2.5 → -2 |
+指标监控 RSI 的波动率（标准差）：
+-   **低波动**: 使用经典固定阈值 (30/70) 以避免噪音。
+-   **高波动**: 切换到历史百分位 (如历史 10%/90%)，以捕捉固定阈值可能错过的极端行情。
 
-### Breadth Symbols | 广度数据
-
-| Market | TW Symbol | FI Symbol | Volume |
-|--------|-----------|-----------|--------|
-| SPY (S&P 500) | INDEX:S5TW | INDEX:S5FI | USI:UVOL/DVOL |
-| QQQ (NASDAQ) | INDEX:NCTW | INDEX:NCFI | USI:UVOLQ/DVOLQ |
-| IWM (Russell 2000) | INDEX:R2TW | INDEX:R2FI | USI:UVOL/DVOL |
+### Auto Mode | 自动模式
+-   **Setting**: `Threshold Mode = Auto`
+-   Automatically toggles between **Fixed** and **Adaptive** based on real-time market conditions.
 
 ---
 
 ## Settings | 设置说明
 
-### Mode | 模式
-- **Aggressive**: Lower thresholds, shorter cooldown (5 bars)
-- **Standard**: Balanced defaults (10 bar cooldown)  
-- **Conservative**: Higher thresholds, longer cooldown (15 bars)
+### Adaptive / 自适应
+-   **Threshold Mode**:
+    -   `Auto`: Recommended. Smart switching. (推荐)
+    -   `Fixed`: Classic behavior (30/70).
+    -   `Adaptive`: Always use percentile-based thresholds.
+-   **History Lookback**: Period for calculating percentiles (Default: 252 days).
 
-### Key Parameters | 关键参数
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| RSI Length | 14 | RSI calculation period |
-| Trend MA Length | 10 | MA for trend filter |
-| Cooldown Bars | 10 | Min bars between same signals |
-| Resonance Window | 3 | Bars to check for multi-market agreement |
-| Min Markets | 2 | # of markets needed for resonance |
+### Divergence / 背离
+-   **Enable Divergence**: Turn on/off 💎 signals.
+-   **Z-Score Threshold**: Strength required to trigger divergence (Default: 1.5).
 
----
-
-## Usage | 使用方法
-
-### Installation | 安装
-1. Copy the indicator code
-2. In TradingView: **Pine Editor** → **New** → Paste code → **Add to Chart**
-
-### Recommended Setup | 推荐设置
-- **Timeframe**: Daily (D) for best accuracy | 推荐日线图
-- **Markets**: Apply on SPY, QQQ, or IWM | 应用于SPY/QQQ/IWM
-- **Mode**: Start with "Standard" | 建议从"标准"模式开始
-
-### Intraday Mode | 日内模式
-The indicator automatically detects intraday timeframes and adjusts:
-- Uses only RSI + Volume factors (TW/FI are daily-only data)
-- Lowers signal thresholds accordingly
-
-指标会自动检测日内周期并调整：
-- 仅使用 RSI + 成交量因子（TW/FI 仅有日线数据）
-- 相应降低信号触发阈值
-
----
-
-## Dashboard | 仪表盘
-
-Displays real-time factor breakdown:
-
-```
-┌────────┬───────┬────────┐
-│ Factor │ Score │ Weight │
-├────────┼───────┼────────┤
-│ RSI    │  1.0  │   1x   │
-│ FI(50D)│  2.0  │ Bottom │
-│ TW(20D)│ -1.0  │  Top   │
-│ Vol    │  1.0  │   1x   │
-│ Trend  │  ↑    │  10MA  │
-├────────┼───────┼────────┤
-│ Total  │  3.0  │  HOLD  │
-└────────┴───────┴────────┘
-```
-
----
-
-## Alerts | 警报
-
-Available alerts for each market (SPY/QQQ/IWM):
-- Panic Low / Buy Zone (entry signals)
-- Reduce / Caution (exit signals)
-- Resonance Buy / Risk (cross-market confirmation)
-
-每个市场（SPY/QQQ/IWM）可设置以下警报：
-- 恐慌低点 / 低吸区（入场信号）
-- 减仓 / 观望（出场信号）
-- 共振买入 / 风险（跨市场确认）
-
----
-
-## Trend Filter | 趋势过滤
-
-**Key feature**: Risk signals (CAUTION/REDUCE) only trigger when **price is below the trend MA**.
-
-When price is above MA (uptrend), the indicator shows **ELEVATED** ⭐ instead, preventing premature exits during strong rallies.
-
-**核心功能**：风险信号（观望/减仓）仅在 **价格跌破趋势均线** 时触发。
-
-当价格在均线之上（上升趋势）时，指标显示 **高估** ⭐，避免在强势上涨中过早离场。
+### Intraday vs Daily
+-   **Daily**: Uses Breadth (stocks > 20/50MA) for scoring.
+-   **Intraday**: Automatically switches to use **Advance-Decline (ADD)** data for breadth scoring.
 
 ---
 
 ## Disclaimer | 免责声明
 
-This indicator is for **educational and informational purposes only**. It is not financial advice. Past performance does not guarantee future results. Always do your own research and consider your risk tolerance before trading.
+This indicator is for educational purposes only. Past performance does not guarantee future results.
 
-本指标仅供 **教育和参考用途**，不构成投资建议。历史表现不代表未来收益。交易前请自行研究并考虑风险承受能力。
-
----
-
-## License | 许可
-
-MIT License - Free to use and modify with attribution.
-
-MIT 许可证 - 可自由使用和修改，请注明出处。
-
----
-
-## Author | 作者
-
-Built with ❤️ for the trading community.
-
-为交易社区精心打造 ❤️
+本指标仅供教育用途。历史表现不代表未来收益。

@@ -1,11 +1,11 @@
-//@version=5
-indicator("RSI+Breadth Multi-Factor", overlay=true, max_labels_count=500)
+//@version=6
+indicator("RSI+Breadth Multi-Factor v2", overlay=true, max_labels_count=500)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
 //==============================================================================
-// Multi-factor scoring: RSI + Market Breadth (TW/FI) + Up/Down Volume
-// 多因子评分系统：RSI + 市场广度 (TW/FI) + 上涨/下跌成交量
+// Multi-factor scoring: RSI + Market Breadth (TW/FI) + Up/Down Volume + Divergence
+// 多因子评分系统：RSI + 市场广度 (TW/FI) + 上涨/下跌成交量 + 背离
 //
 // SIGNAL LEVELS 信号级别:
 // ┌───────────────────────────────────────────────────────────────────────────┐
@@ -17,59 +17,81 @@ indicator("RSI+Breadth Multi-Factor", overlay=true, max_labels_count=500)
 // │ <=-4↑ │ ⭐    │ ELEVATED    │ 高估     │ Hold cautious 持有但谨慎         │
 // │ <=-4↓ │ ⚡    │ CAUTION     │ 观望     │ Take profit 止盈                 │
 // │ <=-6↓ │ ⚠️    │ REDUCE      │ 减仓     │ Reduce position 减少仓位         │
+// │  DIV  │ 💎    │ DIVERGENCE  │ 背离     │ Reversal confirmation 反转确认   │
 // └───────────────────────────────────────────────────────────────────────────┘
 // ↑ = Uptrend 上升趋势 (price > MA)  ↓ = Downtrend 下降趋势 (price < MA)
 //
 // RESONANCE 共振信号:
 // 🔥 Resonance Buy  共振买入 - Multiple markets in buy zone 多市场同时低吸
 // ❄️ Resonance Risk 共振风险 - Multiple markets in risk zone 多市场同时高估
-//
-// TREND FILTER 趋势过滤:
-// Price > MA = Risk signals suppressed 风险信号抑制，显示 ELEVATED (H)
-// Price < MA = Risk signals active 风险信号激活
 //==============================================================================
 
 //========================
 // Mode (评分阈值调整)
 //========================
-grpMode = "Mode"
-mode = input.string("Standard", "信号模式", options=["Aggressive","Standard","Conservative"], group=grpMode)
+grpMode = "Mode / 模式"
+mode = input.string("Standard", "Signal Mode / 信号模式", options=["Aggressive","Standard","Conservative"], group=grpMode)
+
+//========================
+// Adaptive Settings (自适应设置)
+//========================
+grpAdaptive = "Adaptive / 自适应"
+thresholdMode = input.string("Auto", "Threshold Mode / 阈值模式", options=["Auto", "Fixed", "Adaptive"], group=grpAdaptive, tooltip="Auto: 根据RSI波动率自动选择\nFixed: 使用固定阈值\nAdaptive: 使用历史百分位阈值")
+adaptiveLookback = input.int(252, "History Lookback / 回溯周期", minval=50, maxval=500, group=grpAdaptive, tooltip="自适应阈值的计算回溯周期")
+rsiVolThreshold = input.float(10.0, "RSI Vol Threshold / RSI波动阈值", minval=5.0, maxval=20.0, group=grpAdaptive, tooltip="Auto模式下,RSI标准差高于此值则使用自适应")
 
 //========================
 // Core Inputs
 //========================
-grp1 = "Core Settings"
-rsiLen = input.int(14, "RSI Length", minval=2, group=grp1)
+grp1 = "Core Settings / 核心设置"
+rsiLen = input.int(14, "RSI Length / RSI周期", minval=2, group=grp1)
 
-// 自动获取图表周期，无需手动选择
-tfData = timeframe.period  // 自动获取当前图表周期
+// 自动获取图表周期
+tfData = timeframe.period
+intradayMode = timeframe.isintraday
 
-// 自动检测日内模式: 使用内置变量 timeframe.isintraday
-intradayMode = timeframe.isintraday  // 自动: 日内图表 = true, 日线/周线 = false
+//========================
+// Fixed Thresholds (固定阈值 - 可配置)
+//========================
+grpFixedThresh = "Fixed Thresholds / 固定阈值"
+fixedRsiOversold1 = input.int(30, "RSI Oversold Lv1 / 超卖1", minval=10, maxval=40, group=grpFixedThresh)
+fixedRsiOversold2 = input.int(40, "RSI Oversold Lv2 / 超卖2", minval=20, maxval=50, group=grpFixedThresh)
+fixedRsiOverbought1 = input.int(75, "RSI Overbought Lv1 / 超买1", minval=60, maxval=90, group=grpFixedThresh)
+fixedRsiOverbought2 = input.int(65, "RSI Overbought Lv2 / 超买2", minval=50, maxval=80, group=grpFixedThresh)
 
-grp2 = "Signal Thresholds"
-// 信号触发阈值
-strongBotThreshold = input.int(6, "Panic Low Threshold", minval=3, maxval=10, group=grp2)
-botThreshold = input.int(4, "Buy Zone Threshold", minval=2, maxval=8, group=grp2)
-topThreshold = input.int(-4, "Caution Zone Threshold", minval=-8, maxval=-2, group=grp2)
-strongTopThreshold = input.int(-6, "Risk Zone Threshold", minval=-10, maxval=-3, group=grp2)
+grp2 = "Signal Thresholds / 信号阈值"
+strongBotThreshold = input.int(6, "Panic Low Threshold / 恐慌低点", minval=3, maxval=10, group=grp2)
+botThreshold = input.int(4, "Buy Zone Threshold / 低吸区", minval=2, maxval=8, group=grp2)
+topThreshold = input.int(-4, "Caution Zone Threshold / 观望", minval=-8, maxval=-2, group=grp2)
+strongTopThreshold = input.int(-6, "Risk Zone Threshold / 减仓", minval=-10, maxval=-3, group=grp2)
 
-grp3 = "Signal Logic"
-cooldownIn = input.int(10, "Cooldown Bars", minval=0, group=grp3)
-confirmBars = input.int(3, "Resonance Window", minval=0, group=grp3)
-minAgree = input.int(2, "Min Markets for Resonance", minval=1, maxval=3, group=grp3)
+grp3 = "Signal Logic / 信号逻辑"
+cooldownIn = input.int(10, "Cooldown Bars / 冷却周期", minval=0, group=grp3)
+confirmBars = input.int(3, "Resonance Window / 共振窗口", minval=0, group=grp3)
+minAgree = input.int(2, "Min Markets for Resonance / 共振最小市场数", minval=1, maxval=3, group=grp3)
 
+//========================
+// Divergence Settings (背离设置)
+//========================
+grpDiv = "Divergence / 背离"
+useDivergence = input.bool(true, "Enable Divergence / 启用背离", group=grpDiv)
+divZScoreThreshold = input.float(1.5, "Divergence Z-Score / 背离强度阈值", minval=0.5, maxval=3.0, step=0.1, group=grpDiv, tooltip="价格与RSI的Z-Score差值超过此阈值时触发背离")
+
+//========================
 // Trend Filter (趋势过滤)
-grp3b = "Trend Filter"
-trendMALen = input.int(10, "Trend MA Length", minval=5, maxval=50, group=grp3b, tooltip="Price above this MA = uptrend. Risk signals only trigger when price breaks below.")
-useTrendFilter = input.bool(true, "Enable Trend Filter", group=grp3b, tooltip="When enabled, risk signals only trigger if price is below trend MA.")
+//========================
+grp3b = "Trend Filter / 趋势过滤"
+trendMALen = input.int(10, "Trend MA Length / 趋势均线周期", minval=5, maxval=50, group=grp3b)
+useTrendFilter = input.bool(true, "Enable Trend Filter / 启用趋势过滤", group=grp3b)
 
-grp5 = "Symbols"
+//========================
+// Symbols
+//========================
+grp5 = "Symbols / 标的"
 spySym = input.symbol("AMEX:SPY", "SPY", group=grp5)
 qqqSym = input.symbol("NASDAQ:QQQ", "QQQ", group=grp5)
 iwmSym = input.symbol("AMEX:IWM", "Russell2000 (IWM)", group=grp5)
 
-// Breadth symbols
 s5twSym = input.symbol("INDEX:S5TW", "S5TW (% > 20D MA)", group=grp5)
 s5fiSym = input.symbol("INDEX:S5FI", "S5FI (% > 50D MA)", group=grp5)
 nctwSym = input.symbol("INDEX:NCTW", "NCTW (% > 20D MA)", group=grp5)
@@ -77,43 +99,37 @@ ncfiSym = input.symbol("INDEX:NCFI", "NCFI (% > 50D MA)", group=grp5)
 r2twSym = input.symbol("INDEX:R2TW", "R2TW (% > 20D MA)", group=grp5)
 r2fiSym = input.symbol("INDEX:R2FI", "R2FI (% > 50D MA)", group=grp5)
 
-// Up/Down Volume (新增)
-grp5b = "Volume Breadth (新增)"
-uvolSym = input.symbol("USI:UVOL", "Up Volume (NYSE - SPY/IWM)", group=grp5b)
-dvolSym = input.symbol("USI:DVOL", "Down Volume (NYSE - SPY/IWM)", group=grp5b)
-uvolqSym = input.symbol("USI:UVOLQ", "Up Volume (NASDAQ - QQQ)", group=grp5b)
-dvolqSym = input.symbol("USI:DVOLQ", "Down Volume (NASDAQ - QQQ)", group=grp5b)
+grp5b = "Volume Breadth / 成交量广度"
+uvolSym = input.symbol("USI:UVOL", "Up Volume (NYSE)", group=grp5b)
+dvolSym = input.symbol("USI:DVOL", "Down Volume (NYSE)", group=grp5b)
+uvolqSym = input.symbol("USI:UVOLQ", "Up Volume (NASDAQ)", group=grp5b)
+dvolqSym = input.symbol("USI:DVOLQ", "Down Volume (NASDAQ)", group=grp5b)
+addSym = input.symbol("USI:ADD", "Advance-Decline (Intraday)", group=grp5b, tooltip="日内模式下用于广度代理")
 
-grp6 = "Plot"
-plotMode = input.string("AUTO", "显示模式", options=["AUTO","SPY","QQQ","IWM","AGG(共振)"], group=grp6)
-showDashboard = input.bool(true, "显示评分面板", group=grp6)
+grp6 = "Plot / 显示"
+plotMode = input.string("AUTO", "Display Mode / 显示模式", options=["AUTO","SPY","QQQ","IWM","AGG(共振)"], group=grp6)
+showDashboard = input.bool(true, "Show Dashboard / 显示面板", group=grp6)
 
 //========================
-// Mode presets (评分阈值调整)
+// Mode presets
 //========================
-// 不同模式调整信号阈值敏感度
 modeAdjust = mode == "Aggressive" ? 1 : mode == "Conservative" ? -1 : 0
-
-// 日内模式阈值降低 (只有RSI+Vol两因子, 最大分数±4)
 intradayAdjust = intradayMode ? 2 : 0
 adjBotThreshold = botThreshold - modeAdjust - intradayAdjust
 adjStrongBotThreshold = strongBotThreshold - modeAdjust - intradayAdjust
 adjTopThreshold = topThreshold + modeAdjust + intradayAdjust
 adjStrongTopThreshold = strongTopThreshold + modeAdjust + intradayAdjust
-
 cooldownBars = mode == "Aggressive" ? 5 : mode == "Conservative" ? 15 : cooldownIn
 
 //========================
 // Helpers
 //========================
-// 价格数据用图表周期
 f_sec(_sym, _expr) =>
     request.security(_sym, tfData, _expr, barmerge.gaps_off, barmerge.lookahead_off)
 
 f_ohlc(_sym) =>
     request.security(_sym, tfData, [open, high, low, close], barmerge.gaps_off, barmerge.lookahead_off)
 
-// 广度数据始终用日线 (breadth indicators only have daily data)
 f_secDaily(_sym, _expr) =>
     request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_off)
 
@@ -127,87 +143,143 @@ f_recent(_cond, _bars) =>
         bs = ta.barssince(_cond)
         not na(bs) and bs <= _bars
 
-// 冷却：同方向触发后 N bars 内不允许再触发
 f_applyCooldown(_rawSig, _coolBars, _lastBar) =>
     can = na(_lastBar) or (bar_index - _lastBar > _coolBars)
     _rawSig and (_coolBars == 0 or can)
 
 //========================
-// Scoring Functions (核心评分逻辑)
+// Adaptive Threshold Calculation (自适应阈值计算)
 //========================
-// RSI 评分: 底部正分，顶部负分
-// 优化: 收紧顶部阈值 (60→65)
-f_rsiScore(_rsi) =>
+f_adaptiveThresholds(_rsi, _lookback) =>
+    oversold1 = ta.percentile_linear_interpolation(_rsi, _lookback, 10)
+    oversold2 = ta.percentile_linear_interpolation(_rsi, _lookback, 20)
+    overbought1 = ta.percentile_linear_interpolation(_rsi, _lookback, 90)
+    overbought2 = ta.percentile_linear_interpolation(_rsi, _lookback, 80)
+    [oversold1, oversold2, overbought1, overbought2]
+
+//========================
+// Scoring Functions (评分函数)
+//========================
+f_rsiScore(_rsi, _oversold1, _oversold2, _overbought1, _overbought2) =>
     score = 0.0
     if not na(_rsi)
-        if _rsi < 30
+        if _rsi < _oversold1
             score := 2
-        else if _rsi < 40
+        else if _rsi < _oversold2
             score := 1
-        else if _rsi > 75
-            score := -2  // 更严格 (原70)
-        else if _rsi > 65
-            score := -1  // 更严格 (原60)
+        else if _rsi > _overbought1
+            score := -2
+        else if _rsi > _overbought2
+            score := -1
     score
 
-// FI (50日) 评分: 底部核心
-// 优化: 增加顶部权重，减少假信号
 f_fiScore(_fi) =>
     score = 0.0
     if not na(_fi)
         if _fi < 25
-            score := 3  // 极度超卖
+            score := 3
         else if _fi < 35
             score := 2
         else if _fi < 45
             score := 1
         else if _fi > 85
-            score := -2  // 新增: 极度超买才大扣分
+            score := -2
         else if _fi > 78
-            score := -1  // 更严格 (原75)
+            score := -1
     score
 
-// TW (20日) 评分: 顶部核心
-// 优化: 大幅收紧阈值减少假顶部信号
 f_twScore(_tw) =>
     score = 0.0
     if not na(_tw)
         if _tw > 82
-            score := -3  // 更严格 (原75)
+            score := -3
         else if _tw > 72
-            score := -2  // 更严格 (原65)
+            score := -2
         else if _tw > 68
-            score := -1  // 大幅收紧 (原55)
+            score := -1
         else if _tw < 30
-            score := 1  // 更严格 (原35)
+            score := 1
     score
 
-// Up/Down Volume 评分
-// 优化: 收紧顶部阈值
 f_volScore(_uvol, _dvol) =>
     score = 0.0
     if not na(_uvol) and not na(_dvol) and _dvol > 0
         ratio = _uvol / _dvol
         if ratio < 0.5
-            score := 2  // 下跌成交量主导 -> 可能见底
+            score := 2
         else if ratio < 0.8
             score := 1
         else if ratio > 2.5
-            score := -2  // 更严格 (原2.0)
+            score := -2
         else if ratio > 1.8
-            score := -1  // 更严格 (原1.5)
+            score := -1
     score
 
-// 综合评分函数
-// intradayMode: 日内模式只用 RSI + Volume
-f_totalScore(_rsi, _tw, _fi, _uvol, _dvol, _intraday) =>
-    rsiS = f_rsiScore(_rsi)
+// 日内广度评分 (使用 ADD)
+f_addScore(_add) =>
+    score = 0.0
+    if not na(_add)
+        if _add < -1500
+            score := 3
+        else if _add < -500
+            score := 2
+        else if _add < 0
+            score := 1
+        else if _add > 1500
+            score := -3
+        else if _add > 500
+            score := -2
+        else if _add > 0
+            score := -1
+    score
+
+//========================
+// Divergence Detection (背离检测)
+//========================
+f_divergence(_close, _rsi, _lookback) =>
+    priceMA = ta.sma(_close, _lookback)
+    priceStd = ta.stdev(_close, _lookback)
+    rsiMA = ta.sma(_rsi, _lookback)
+    rsiStd = ta.stdev(_rsi, _lookback)
+    
+    priceZ = priceStd > 0 ? (_close - priceMA) / priceStd : 0
+    rsiZ = rsiStd > 0 ? (_rsi - rsiMA) / rsiStd : 0
+    
+    divStrength = priceZ - rsiZ
+    [divStrength, priceZ, rsiZ]
+
+//========================
+// Total Score Function (综合评分)
+//========================
+f_totalScore(_rsi, _tw, _fi, _uvol, _dvol, _add, _intraday, _oversold1, _oversold2, _overbought1, _overbought2) =>
+    rsiS = f_rsiScore(_rsi, _oversold1, _oversold2, _overbought1, _overbought2)
     volS = f_volScore(_uvol, _dvol)
-    // 日内模式跳过 TW/FI (日线数据不适合小时图)
-    fiS = _intraday ? 0.0 : f_fiScore(_fi)
-    twS = _intraday ? 0.0 : f_twScore(_tw)
-    total = rsiS + fiS + twS + volS
-    [total, rsiS, fiS, twS, volS]
+    
+    fiS = 0.0
+    twS = 0.0
+    addS = 0.0
+    
+    if _intraday
+        addS := f_addScore(_add)
+    else
+        fiS := f_fiScore(_fi)
+        twS := f_twScore(_tw)
+    
+    total = rsiS + fiS + twS + volS + addS
+    [total, rsiS, fiS, twS, volS, addS]
+
+//========================
+// Signal Generation Function (信号生成 - 模块化)
+//========================
+f_generateSignals(_score, _uptrend, _adjBotTh, _adjStrongBotTh, _adjTopTh, _adjStrongTopTh) =>
+    strongBot = _score >= _adjStrongBotTh
+    bot = _score >= _adjBotTh and _score < _adjStrongBotTh
+    topCond = _score <= _adjTopTh and _score > _adjStrongTopTh
+    strongTopCond = _score <= _adjStrongTopTh
+    top = topCond and (not useTrendFilter or not _uptrend)
+    strongTop = strongTopCond and (not useTrendFilter or not _uptrend)
+    elevated = (topCond or strongTopCond) and _uptrend and useTrendFilter
+    [strongBot, bot, top, strongTop, elevated, strongBot or bot, strongTop or top]
 
 //========================
 // Market data
@@ -220,7 +292,6 @@ spyRSI = f_rsi_from_close(spyC)
 qqqRSI = f_rsi_from_close(qqqC)
 iwmRSI = f_rsi_from_close(iwmC)
 
-// 广度数据始终用日线 (only daily data available)
 s5tw = f_secDaily(s5twSym, close)
 s5fi = f_secDaily(s5fiSym, close)
 nctw = f_secDaily(nctwSym, close)
@@ -228,74 +299,78 @@ ncfi = f_secDaily(ncfiSym, close)
 r2tw = f_secDaily(r2twSym, close)
 r2fi = f_secDaily(r2fiSym, close)
 
-// Up/Down Volume 也用日线 (intraday volume data unreliable for breadth)
 uvol = f_secDaily(uvolSym, close)
 dvol = f_secDaily(dvolSym, close)
 uvolq = f_secDaily(uvolqSym, close)
 dvolq = f_secDaily(dvolqSym, close)
 
+// Intraday breadth proxy
+addValue = f_sec(addSym, close)
+
+//========================
+// Adaptive Threshold Selection (自适应阈值选择)
+//========================
+rsiVol = ta.stdev(spyRSI, 50)
+useAdaptive = thresholdMode == "Auto" ? rsiVol > rsiVolThreshold : thresholdMode == "Adaptive"
+
+[spyAdaptOS1, spyAdaptOS2, spyAdaptOB1, spyAdaptOB2] = f_adaptiveThresholds(spyRSI, adaptiveLookback)
+[qqqAdaptOS1, qqqAdaptOS2, qqqAdaptOB1, qqqAdaptOB2] = f_adaptiveThresholds(qqqRSI, adaptiveLookback)
+[iwmAdaptOS1, iwmAdaptOS2, iwmAdaptOB1, iwmAdaptOB2] = f_adaptiveThresholds(iwmRSI, adaptiveLookback)
+
+spyOS1 = useAdaptive ? spyAdaptOS1 : fixedRsiOversold1
+spyOS2 = useAdaptive ? spyAdaptOS2 : fixedRsiOversold2
+spyOB1 = useAdaptive ? spyAdaptOB1 : fixedRsiOverbought1
+spyOB2 = useAdaptive ? spyAdaptOB2 : fixedRsiOverbought2
+
+qqqOS1 = useAdaptive ? qqqAdaptOS1 : fixedRsiOversold1
+qqqOS2 = useAdaptive ? qqqAdaptOS2 : fixedRsiOversold2
+qqqOB1 = useAdaptive ? qqqAdaptOB1 : fixedRsiOverbought1
+qqqOB2 = useAdaptive ? qqqAdaptOB2 : fixedRsiOverbought2
+
+iwmOS1 = useAdaptive ? iwmAdaptOS1 : fixedRsiOversold1
+iwmOS2 = useAdaptive ? iwmAdaptOS2 : fixedRsiOversold2
+iwmOB1 = useAdaptive ? iwmAdaptOB1 : fixedRsiOverbought1
+iwmOB2 = useAdaptive ? iwmAdaptOB2 : fixedRsiOverbought2
+
 //========================
 // Calculate Scores per Market
 //========================
-// SPY 使用 NYSE 成交量
-[spyScore, spyRsiS, spyFiS, spyTwS, spyVolS] = f_totalScore(spyRSI, s5tw, s5fi, uvol, dvol, intradayMode)
-// QQQ 使用 NASDAQ 成交量
-[qqqScore, qqqRsiS, qqqFiS, qqqTwS, qqqVolS] = f_totalScore(qqqRSI, nctw, ncfi, uvolq, dvolq, intradayMode)
-// IWM 使用 NYSE 成交量
-[iwmScore, iwmRsiS, iwmFiS, iwmTwS, iwmVolS] = f_totalScore(iwmRSI, r2tw, r2fi, uvol, dvol, intradayMode)
+[spyScore, spyRsiS, spyFiS, spyTwS, spyVolS, spyAddS] = f_totalScore(spyRSI, s5tw, s5fi, uvol, dvol, addValue, intradayMode, spyOS1, spyOS2, spyOB1, spyOB2)
+[qqqScore, qqqRsiS, qqqFiS, qqqTwS, qqqVolS, qqqAddS] = f_totalScore(qqqRSI, nctw, ncfi, uvolq, dvolq, addValue, intradayMode, qqqOS1, qqqOS2, qqqOB1, qqqOB2)
+[iwmScore, iwmRsiS, iwmFiS, iwmTwS, iwmVolS, iwmAddS] = f_totalScore(iwmRSI, r2tw, r2fi, uvol, dvol, addValue, intradayMode, iwmOS1, iwmOS2, iwmOB1, iwmOB2)
 
 //========================
-// Signal Generation (基于评分 + 趋势过滤)
+// Divergence Calculation
 //========================
-// Trend MA calculation (趋势均线)
+[spyDivStrength, spyPriceZ, spyRsiZ] = f_divergence(spyC, spyRSI, 50)
+[qqqDivStrength, qqqPriceZ, qqqRsiZ] = f_divergence(qqqC, qqqRSI, 50)
+[iwmDivStrength, iwmPriceZ, iwmRsiZ] = f_divergence(iwmC, iwmRSI, 50)
+
+spyBullishDiv = useDivergence and spyDivStrength < -divZScoreThreshold and spyRSI < spyOS2
+spyBearishDiv = useDivergence and spyDivStrength > divZScoreThreshold and spyRSI > spyOB2
+qqqBullishDiv = useDivergence and qqqDivStrength < -divZScoreThreshold and qqqRSI < qqqOS2
+qqqBearishDiv = useDivergence and qqqDivStrength > divZScoreThreshold and qqqRSI > qqqOB2
+iwmBullishDiv = useDivergence and iwmDivStrength < -divZScoreThreshold and iwmRSI < iwmOS2
+iwmBearishDiv = useDivergence and iwmDivStrength > divZScoreThreshold and iwmRSI > iwmOB2
+
+//========================
+// Trend MA & Signals (using modular function)
+//========================
 spyTrendMA = ta.sma(spyC, trendMALen)
 qqqTrendMA = ta.sma(qqqC, trendMALen)
 iwmTrendMA = ta.sma(iwmC, trendMALen)
 
-// 趋势状态: 价格在MA之上 = 上升趋势
 spyUptrend = spyC > spyTrendMA
 qqqUptrend = qqqC > qqqTrendMA
 iwmUptrend = iwmC > iwmTrendMA
 
-// SPY signals
-spyStrongBot = spyScore >= adjStrongBotThreshold
-spyBot = spyScore >= adjBotThreshold and spyScore < adjStrongBotThreshold
-// 风险信号: 只有趋势过滤关闭 OR 价格跌破MA才触发
-spyTopCondition = spyScore <= adjTopThreshold and spyScore > adjStrongTopThreshold
-spyStrongTopCondition = spyScore <= adjStrongTopThreshold
-spyTop = spyTopCondition and (not useTrendFilter or not spyUptrend)
-spyStrongTop = spyStrongTopCondition and (not useTrendFilter or not spyUptrend)
-// 高估但趋势良好 (用于Dashboard显示)
-spyElevated = (spyTopCondition or spyStrongTopCondition) and spyUptrend and useTrendFilter
+[spyStrongBot, spyBot, spyTop, spyStrongTop, spyElevated, spyBotRaw, spyTopRaw] = f_generateSignals(spyScore, spyUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+[qqqStrongBot, qqqBot, qqqTop, qqqStrongTop, qqqElevated, qqqBotRaw, qqqTopRaw] = f_generateSignals(qqqScore, qqqUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+[iwmStrongBot, iwmBot, iwmTop, iwmStrongTop, iwmElevated, iwmBotRaw, iwmTopRaw] = f_generateSignals(iwmScore, iwmUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
 
-spyBotRaw = spyStrongBot or spyBot
-spyTopRaw = spyStrongTop or spyTop
-
-// QQQ signals
-qqqStrongBot = qqqScore >= adjStrongBotThreshold
-qqqBot = qqqScore >= adjBotThreshold and qqqScore < adjStrongBotThreshold
-qqqTopCondition = qqqScore <= adjTopThreshold and qqqScore > adjStrongTopThreshold
-qqqStrongTopCondition = qqqScore <= adjStrongTopThreshold
-qqqTop = qqqTopCondition and (not useTrendFilter or not qqqUptrend)
-qqqStrongTop = qqqStrongTopCondition and (not useTrendFilter or not qqqUptrend)
-qqqElevated = (qqqTopCondition or qqqStrongTopCondition) and qqqUptrend and useTrendFilter
-
-qqqBotRaw = qqqStrongBot or qqqBot
-qqqTopRaw = qqqStrongTop or qqqTop
-
-// IWM signals
-iwmStrongBot = iwmScore >= adjStrongBotThreshold
-iwmBot = iwmScore >= adjBotThreshold and iwmScore < adjStrongBotThreshold
-iwmTopCondition = iwmScore <= adjTopThreshold and iwmScore > adjStrongTopThreshold
-iwmStrongTopCondition = iwmScore <= adjStrongTopThreshold
-iwmTop = iwmTopCondition and (not useTrendFilter or not iwmUptrend)
-iwmStrongTop = iwmStrongTopCondition and (not useTrendFilter or not iwmUptrend)
-iwmElevated = (iwmTopCondition or iwmStrongTopCondition) and iwmUptrend and useTrendFilter
-
-iwmBotRaw = iwmStrongBot or iwmBot
-iwmTopRaw = iwmStrongTop or iwmTop
-
+//========================
 // Cooldown state
+//========================
 var int spyLastBot = na
 var int spyLastTop = na
 var int qqqLastBot = na
@@ -324,7 +399,7 @@ if iwmTopTrig
     iwmLastTop := bar_index
 
 //========================
-// Aggregate resonance (edge-triggered)
+// Aggregate resonance
 //========================
 spyBotRecent = f_recent(spyBotTrig, confirmBars)
 qqqBotRecent = f_recent(qqqBotTrig, confirmBars)
@@ -346,16 +421,9 @@ aggTopEdge    = aggTop and not aggTop[1]
 //========================
 // Plot selection
 //========================
-// 使用 syminfo.ticker 获取纯品种名称 (不含交易所前缀)
 tickerName = str.upper(syminfo.ticker)
-
-// S&P 500 系列: SPY, SPX, ES (期货), /ES, MES
 isSpy = str.contains(tickerName, "SPY") or str.contains(tickerName, "SPX") or tickerName == "ES" or tickerName == "MES" or str.contains(tickerName, "ES1!")
-
-// NASDAQ 100 系列: QQQ, NDX, NQ (期货), /NQ, MNQ  
 isQqq = str.contains(tickerName, "QQQ") or str.contains(tickerName, "NDX") or tickerName == "NQ" or tickerName == "MNQ" or str.contains(tickerName, "NQ1!")
-
-// Russell 2000 系列: IWM, RUT, RTY (期货), /RTY, M2K
 isIwm = str.contains(tickerName, "IWM") or str.contains(tickerName, "RUT") or str.contains(tickerName, "RTY") or tickerName == "M2K"
 
 modePlot = plotMode == "AUTO" ? (isSpy ? "SPY" : isQqq ? "QQQ" : isIwm ? "IWM" : "AGG(共振)") : plotMode
@@ -364,22 +432,18 @@ showQqq = modePlot == "QQQ"
 showIwm = modePlot == "IWM"
 showAgg = modePlot == "AGG(共振)"
 
-// 选择当前显示的评分
 displayScore = showSpy ? spyScore : showQqq ? qqqScore : showIwm ? iwmScore : (spyScore + qqqScore + iwmScore) / 3
 displayRsiS = showSpy ? spyRsiS : showQqq ? qqqRsiS : showIwm ? iwmRsiS : (spyRsiS + qqqRsiS + iwmRsiS) / 3
 displayFiS = showSpy ? spyFiS : showQqq ? qqqFiS : showIwm ? iwmFiS : (spyFiS + qqqFiS + iwmFiS) / 3
 displayTwS = showSpy ? spyTwS : showQqq ? qqqTwS : showIwm ? iwmTwS : (spyTwS + qqqTwS + iwmTwS) / 3
 displayVolS = showSpy ? spyVolS : showQqq ? qqqVolS : showIwm ? iwmVolS : (spyVolS + qqqVolS + iwmVolS) / 3
+displayAddS = showSpy ? spyAddS : showQqq ? qqqAddS : showIwm ? iwmAddS : (spyAddS + qqqAddS + iwmAddS) / 3
+
+displayBullishDiv = showSpy ? spyBullishDiv : showQqq ? qqqBullishDiv : showIwm ? iwmBullishDiv : (spyBullishDiv or qqqBullishDiv or iwmBullishDiv)
+displayBearishDiv = showSpy ? spyBearishDiv : showQqq ? qqqBearishDiv : showIwm ? iwmBearishDiv : (spyBearishDiv or qqqBearishDiv or iwmBearishDiv)
 
 //========================
-// Plot shapes (新术语)
-// 🚀 = Panic Low (恐慌低点, Score >= 6) - 强烈买入机会
-// � = Buy Zone (低吸区, Score >= 4) - 分批建仓
-// ⚠️ = Reduce (减仓, Score <= -6 且趋势向下) - 高风险
-// � = Caution (观望, Score <= -4 且趋势向下) - 止盈观望
-// � = Elevated (高估但趋势良好) - 持有但谨慎
-// �🔥 = Resonance Buy (多市场共振买入)
-// ❄️ = Resonance Risk (多市场共振风险)
+// Plot shapes
 //========================
 // SPY
 plotshape(showSpy and spyBotTrig and spyStrongBot, title="SPY Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
@@ -387,6 +451,8 @@ plotshape(showSpy and spyBotTrig and spyBot, title="SPY Buy Zone", style=shape.t
 plotshape(showSpy and spyTopTrig and spyStrongTop, title="SPY Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
 plotshape(showSpy and spyTopTrig and spyTop, title="SPY Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
 plotshape(showSpy and spyElevated and not spyElevated[1], title="SPY Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="⭐")
+plotshape(showSpy and spyBullishDiv and not spyBullishDiv[1], title="SPY Bullish Div", style=shape.labelup, location=location.belowbar, color=color.new(color.aqua, 0), textcolor=color.black, size=size.small, text="💎")
+plotshape(showSpy and spyBearishDiv and not spyBearishDiv[1], title="SPY Bearish Div", style=shape.labeldown, location=location.abovebar, color=color.new(color.fuchsia, 0), textcolor=color.white, size=size.small, text="💎")
 
 // QQQ
 plotshape(showQqq and qqqBotTrig and qqqStrongBot, title="QQQ Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
@@ -394,6 +460,8 @@ plotshape(showQqq and qqqBotTrig and qqqBot, title="QQQ Buy Zone", style=shape.t
 plotshape(showQqq and qqqTopTrig and qqqStrongTop, title="QQQ Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
 plotshape(showQqq and qqqTopTrig and qqqTop, title="QQQ Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
 plotshape(showQqq and qqqElevated and not qqqElevated[1], title="QQQ Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="⭐")
+plotshape(showQqq and qqqBullishDiv and not qqqBullishDiv[1], title="QQQ Bullish Div", style=shape.labelup, location=location.belowbar, color=color.new(color.aqua, 0), textcolor=color.black, size=size.small, text="💎")
+plotshape(showQqq and qqqBearishDiv and not qqqBearishDiv[1], title="QQQ Bearish Div", style=shape.labeldown, location=location.abovebar, color=color.new(color.fuchsia, 0), textcolor=color.white, size=size.small, text="💎")
 
 // IWM
 plotshape(showIwm and iwmBotTrig and iwmStrongBot, title="IWM Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
@@ -401,20 +469,23 @@ plotshape(showIwm and iwmBotTrig and iwmBot, title="IWM Buy Zone", style=shape.t
 plotshape(showIwm and iwmTopTrig and iwmStrongTop, title="IWM Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
 plotshape(showIwm and iwmTopTrig and iwmTop, title="IWM Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
 plotshape(showIwm and iwmElevated and not iwmElevated[1], title="IWM Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="⭐")
+plotshape(showIwm and iwmBullishDiv and not iwmBullishDiv[1], title="IWM Bullish Div", style=shape.labelup, location=location.belowbar, color=color.new(color.aqua, 0), textcolor=color.black, size=size.small, text="💎")
+plotshape(showIwm and iwmBearishDiv and not iwmBearishDiv[1], title="IWM Bearish Div", style=shape.labeldown, location=location.abovebar, color=color.new(color.fuchsia, 0), textcolor=color.white, size=size.small, text="💎")
 
 // AGG 共振
 plotshape(showAgg and aggBottomEdge, title="Resonance Buy", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, text="🔥")
 plotshape(showAgg and aggTopEdge, title="Resonance Risk", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, text="❄️")
 
 //========================
-// Dashboard (渐进式风险描述)
+// Dashboard
 //========================
-// 选择当前趋势状态
 displayUptrend = showSpy ? spyUptrend : showQqq ? qqqUptrend : showIwm ? iwmUptrend : (spyUptrend and qqqUptrend) or (spyUptrend and iwmUptrend) or (qqqUptrend and iwmUptrend)
 displayElevated = showSpy ? spyElevated : showQqq ? qqqElevated : showIwm ? iwmElevated : (spyElevated or qqqElevated or iwmElevated)
 
+thresholdModeText = useAdaptive ? "Adaptive" : "Fixed"
+
 if showDashboard and barstate.islast
-    var table dashboard = table.new(position.top_right, 3, 7, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
+    var table dashboard = table.new(position.top_right, 3, 9, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
     
     // Header
     table.cell(dashboard, 0, 0, "Factor", text_color=color.white, text_size=size.small)
@@ -427,11 +498,17 @@ if showDashboard and barstate.islast
     table.cell(dashboard, 1, 1, str.tostring(displayRsiS, "#.#"), text_color=rsiColor, text_size=size.small)
     table.cell(dashboard, 2, 1, "1x", text_color=color.gray, text_size=size.small)
     
-    // FI (50D)
-    fiColor = displayFiS > 0 ? color.lime : displayFiS < 0 ? color.red : color.gray
-    table.cell(dashboard, 0, 2, "FI(50D)", text_color=color.white, text_size=size.small)
-    table.cell(dashboard, 1, 2, str.tostring(displayFiS, "#.#"), text_color=fiColor, text_size=size.small)
-    table.cell(dashboard, 2, 2, "Bottom", text_color=color.lime, text_size=size.small)
+    // FI (50D) or ADD (Intraday)
+    if intradayMode
+        addColor = displayAddS > 0 ? color.lime : displayAddS < 0 ? color.red : color.gray
+        table.cell(dashboard, 0, 2, "ADD", text_color=color.white, text_size=size.small)
+        table.cell(dashboard, 1, 2, str.tostring(displayAddS, "#.#"), text_color=addColor, text_size=size.small)
+        table.cell(dashboard, 2, 2, "Intraday", text_color=color.aqua, text_size=size.small)
+    else
+        fiColor = displayFiS > 0 ? color.lime : displayFiS < 0 ? color.red : color.gray
+        table.cell(dashboard, 0, 2, "FI(50D)", text_color=color.white, text_size=size.small)
+        table.cell(dashboard, 1, 2, str.tostring(displayFiS, "#.#"), text_color=fiColor, text_size=size.small)
+        table.cell(dashboard, 2, 2, "Bottom", text_color=color.lime, text_size=size.small)
     
     // TW (20D)
     twColor = displayTwS > 0 ? color.lime : displayTwS < 0 ? color.red : color.gray
@@ -445,42 +522,53 @@ if showDashboard and barstate.islast
     table.cell(dashboard, 1, 4, str.tostring(displayVolS, "#.#"), text_color=volColor, text_size=size.small)
     table.cell(dashboard, 2, 4, "1x", text_color=color.gray, text_size=size.small)
     
-    // Trend status
-    trendText = displayUptrend ? "↑ UPTREND" : "↓ DOWNTREND"
+    // Trend
+    trendText = displayUptrend ? "↑ UP" : "↓ DOWN"
     trendColor = displayUptrend ? color.lime : color.red
     table.cell(dashboard, 0, 5, "Trend", text_color=color.white, text_size=size.small)
     table.cell(dashboard, 1, 5, trendText, text_color=trendColor, text_size=size.small)
     table.cell(dashboard, 2, 5, str.tostring(trendMALen) + "MA", text_color=color.gray, text_size=size.small)
     
-    // Total with gradual risk descriptions
+    // Threshold Mode
+    thresholdColor = useAdaptive ? color.aqua : color.yellow
+    table.cell(dashboard, 0, 6, "Mode", text_color=color.white, text_size=size.small)
+    table.cell(dashboard, 1, 6, thresholdModeText, text_color=thresholdColor, text_size=size.small)
+    table.cell(dashboard, 2, 6, "σ=" + str.tostring(rsiVol, "#.#"), text_color=color.gray, text_size=size.small)
+    
+    // Divergence
+    divText = displayBullishDiv ? "BULL 💎" : displayBearishDiv ? "BEAR 💎" : "-"
+    divColor = displayBullishDiv ? color.aqua : displayBearishDiv ? color.fuchsia : color.gray
+    table.cell(dashboard, 0, 7, "Div", text_color=color.white, text_size=size.small)
+    table.cell(dashboard, 1, 7, divText, text_color=divColor, text_size=size.small)
+    table.cell(dashboard, 2, 7, useDivergence ? "ON" : "OFF", text_color=useDivergence ? color.lime : color.gray, text_size=size.small)
+    
+    // Total
     totalColor = displayScore >= adjBotThreshold ? color.lime : displayScore <= adjTopThreshold ? (displayUptrend ? color.yellow : color.red) : color.gray
-    table.cell(dashboard, 0, 6, "Total", text_color=color.white, text_size=size.normal)
-    table.cell(dashboard, 1, 6, str.tostring(displayScore, "#.#"), text_color=totalColor, text_size=size.normal)
-    // 渐进式风险描述
+    table.cell(dashboard, 0, 8, "Total", text_color=color.white, text_size=size.normal)
+    table.cell(dashboard, 1, 8, str.tostring(displayScore, "#.#"), text_color=totalColor, text_size=size.normal)
     signalText = displayScore >= adjStrongBotThreshold ? "PANIC LOW" : 
                  displayScore >= adjBotThreshold ? "ACCUMULATE" : 
                  displayElevated ? "ELEVATED" :
                  displayScore <= adjStrongTopThreshold ? "REDUCE" : 
                  displayScore <= adjTopThreshold ? "CAUTION" : 
                  "HOLD"
-    table.cell(dashboard, 2, 6, signalText, text_color=totalColor, text_size=size.small)
+    table.cell(dashboard, 2, 8, signalText, text_color=totalColor, text_size=size.small)
 
 //========================
-// Alerts - AUTO模式 (推荐使用，根据当前图表自动选择)
+// Alerts
 //========================
-// 当前图表的买入/卖出信号 (基于AUTO识别)
 autoBotTrig = (isSpy and spyBotTrig) or (isQqq and qqqBotTrig) or (isIwm and iwmBotTrig)
 autoStrongBot = (isSpy and spyBotTrig and spyStrongBot) or (isQqq and qqqBotTrig and qqqStrongBot) or (isIwm and iwmBotTrig and iwmStrongBot)
 autoTopTrig = (isSpy and spyTopTrig) or (isQqq and qqqTopTrig) or (isIwm and iwmTopTrig)
 autoStrongTop = (isSpy and spyTopTrig and spyStrongTop) or (isQqq and qqqTopTrig and qqqStrongTop) or (isIwm and iwmTopTrig and iwmStrongTop)
+autoBullishDiv = (isSpy and spyBullishDiv) or (isQqq and qqqBullishDiv) or (isIwm and iwmBullishDiv)
+autoBearishDiv = (isSpy and spyBearishDiv) or (isQqq and qqqBearishDiv) or (isIwm and iwmBearishDiv)
 
-// 智能 Alert - 只需设置这几个即可
 alertcondition(autoStrongBot, title="🚀 Panic Low", message="🚀 Panic Low - Strong buy opportunity - {{ticker}} @ {{time}}")
 alertcondition(autoBotTrig, title="📈 Buy Zone", message="📈 Buy Zone entry signal - {{ticker}} @ {{time}}")
 alertcondition(autoStrongTop, title="⚠️ Reduce", message="⚠️ Reduce - High risk, consider reducing - {{ticker}} @ {{time}}")
 alertcondition(autoTopTrig, title="⚡ Caution", message="⚡ Caution - Consider taking profits - {{ticker}} @ {{time}}")
 alertcondition(aggBottomEdge, title="🔥 Resonance Buy", message="🔥 Multi-market resonance buy - {{ticker}} @ {{time}}")
 alertcondition(aggTopEdge, title="❄️ Resonance Risk", message="❄️ Multi-market resonance risk - {{ticker}} @ {{time}}")
-
-
-
+alertcondition(autoBullishDiv, title="💎 Bullish Divergence", message="💎 Bullish divergence detected - {{ticker}} @ {{time}}")
+alertcondition(autoBearishDiv, title="💎 Bearish Divergence", message="💎 Bearish divergence detected - {{ticker}} @ {{time}}")
