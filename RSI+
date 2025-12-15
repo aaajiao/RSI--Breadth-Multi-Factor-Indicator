@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v2", overlay=true, max_labels_count=500)
+indicator("RSI+Breadth Multi-Factor v6", overlay=true, max_labels_count=500)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
