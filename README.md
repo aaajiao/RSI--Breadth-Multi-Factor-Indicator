@@ -9,9 +9,9 @@
 
 ## Overview | 概述
 
-A quantitative indicator that combines **RSI**, **Market Breadth**, **Volume Ratio**, and **Divergence** to generate actionable buy/sell signals. Version 6 introduces **Adaptive Technology**, automatically adjusting signal thresholds based on market volatility.
+A quantitative indicator that combines **RSI**, **Market Breadth**, **Volume Ratio**, and **Divergence** to generate actionable buy/sell signals across **SPY**, **QQQ**, and **IWM**. Version 6 introduces **Adaptive Technology**, automatically adjusting signal thresholds and lookback periods based on market volatility.
 
-这是一个结合 **RSI**、**市场广度**、**成交量比** 和 **背离** 的量化指标。v6 版本引入了 **自适应技术**，能根据市场波动率自动调整信号阈值。
+这是一个结合 **RSI**、**市场广度**、**成交量比** 和 **背离** 的量化指标，针对 **SPY**、**QQQ** 和 **IWM** 三大市场生成可执行信号。v6 版本引入了 **自适应技术**，能根据市场波动率自动调整信号阈值和回溯期。
 
 ---
 
@@ -19,25 +19,48 @@ A quantitative indicator that combines **RSI**, **Market Breadth**, **Volume Rat
 
 | Feature | Description | 中文说明 |
 |:---:|---|---|
-| 🧠 | **Adaptive Lookback** | **自适应回溯**：使用统计公式 n=(Z×σ/E)² 自动计算最优回溯期 |
-| 💎 | **Smart Divergence** | **智能背离**：背离回溯期自动关联 RSI 长度 (4×)，避免周期错配 |
-| ⚡ | **Dual Detection** | **双重检测**：快速触发(1.5×)+慢速确认(3×)，更快响应市场变化 |
-| 📊 | **Health Monitor** | **健康监控**：实时验证 Lookback 统计有效性与分布宽度 |
-| 📉 | **Intraday Breadth** | **日内广度**：使用 `USI:ADD` (涨跌家数差) 支持小时图广度分析 |
+| 🧠 | **Auto-Adaptive Lookback** | **自动回溯期**：使用统计公式 n=(Z×σ/E)² 自动计算最优回溯期 (100-1000 bars) |
+| � | **Dual Volatility System** | **双重波动率**：结合短期 (4×RSI) 与长期 (252D) 波动率，动态加权 |
+| ⚡ | **Dual Detection Thresholds** | **双重检测**：快速触发 (1.5×RSI) + 慢速确认 (3×RSI)，捕捉波动变化 |
+| �💎 | **Smart Divergence** | **智能背离**：背离回溯期自动关联 RSI 长度 (4×)，避免周期错配 |
+| 🔥 | **Market Resonance** | **市场共振**：检测多市场同时触发买入/卖出信号 |
+| 📈 | **Intraday Breadth** | **日内广度**：小时图自动使用 `USI:ADD` (涨跌家数差) 代替每日广度 |
+| 🎯 | **Health Monitor** | **健康监控**：实时验证 Lookback 统计有效性与分布宽度 (≥12) |
+| �️ | **Signal Cooldown** | **信号冷却**：防止信号重叠，可配置冷却期 |
 
 ---
 
-## Signal Reference | 信号说明
+## Core Components | 核心组件
 
-| Score | Emoji | Signal | 中文 | Action |
-|:-----:|:-----:|--------|:----:|--------|
-| ≥ 6 | 🚀 | **PANIC LOW** | 恐慌低点 | Strong buy 强烈买入 |
-| ≥ 4 | 📈 | **BUY ZONE** | 低吸区 | Accumulate 分批建仓 |
-| Div | 💎 | **DIVERGENCE** | 背离 | Reversal Confirmation 反转确认 |
-| -3~3 | - | **HOLD** | 持有 | Hold position 持仓观望 |
-| ≤ -4↑ | ⭐ | **ELEVATED** | 高估 | Hold cautious 持有但谨慎 |
-| ≤ -4↓ | ⚡ | **CAUTION** | 观望 | Take profit 止盈 |
-| ≤ -6↓ | ⚠️ | **REDUCE** | 减仓 | Reduce position 减少仓位 |
+### Multi-Factor Scoring | 多因子评分
+
+The indicator calculates a composite score from multiple factors:
+
+指标从多个因子计算综合得分：
+
+| Factor | 因子 | Weight | Description |
+|:------:|:----:|:------:|-------------|
+| **RSI** | RSI指标 | 1x | 14-period RSI with adaptive thresholds<br/>14周期RSI，自适应阈值 |
+| **FI/TW** | 市场广度 | 2-3x | % stocks above 20D/50D MA (S5FI, S5TW, etc.)<br/>高于20日/50日均线的股票比例 |
+| **Volume** | 成交量 | 1x | Up/Down volume ratio (UVOL/DVOL)<br/>上涨/下跌成交量比 |
+| **ADD** | 涨跌差 | 3x | Advance-Decline spread (intraday mode only)<br/>涨跌家数差（仅日内模式） |
+| **Divergence** | 背离 | Bonus | Z-Score based divergence detection<br/>基于Z值的背离检测 |
+
+### Signal Levels | 信号级别
+
+| Score | Emoji | Signal | 中文 | Action | Condition |
+|:-----:|:-----:|--------|:----:|--------|-----------|
+| ≥ 6 | 🚀 | **PANIC LOW** | 恐慌低点 | Strong buy | Score + multiple factors extreme |
+| ≥ 4 | 📈 | **BUY ZONE** | 低吸区 | Accumulate | Above buy threshold |
+| DIV | 💎 | **DIVERGENCE** | 背离 | Reversal signal | Z-Score divergence in extreme zone |
+| -3~3 | - | **HOLD** | 持有 | Hold position | Neutral range |
+| ≤ -4↑ | ⭐ | **ELEVATED** | 高估 | Hold cautious | Negative score + uptrend |
+| ≤ -4↓ | ⚡ | **CAUTION** | 观望 | Take profit | Negative score + downtrend |
+| ≤ -6↓ | ⚠️ | **REDUCE** | 减仓 | Reduce position | Strong negative score + downtrend |
+
+**Resonance Signals | 共振信号**:
+- 🔥 **Resonance Buy** - 2+ markets in buy zone simultaneously
+- ❄️ **Resonance Risk** - 2+ markets in risk zone simultaneously
 
 > **↑ = Uptrend** (Price > MA) | **↓ = Downtrend** (Price < MA)
 
@@ -45,61 +68,297 @@ A quantitative indicator that combines **RSI**, **Market Breadth**, **Volume Rat
 
 ## Adaptive Logic | 自适应逻辑
 
-### How it works | 工作原理
-The indicator monitors the volatility of RSI (Standard Deviation).
--   **Low Volatility**: Uses classic fixed thresholds (30/70) to avoid noise.
--   **High Volatility**: Switches to percentiles (e.g., historical 10% / 90%) to catch extremes that fixed levels might miss.
+### 1️⃣ Auto-Adaptive Lookback | 自动回溯期
 
-指标监控 RSI 的波动率（标准差）：
--   **低波动**: 使用经典固定阈值 (30/70) 以避免噪音。
--   **高波动**: 切换到历史百分位 (如历史 10%/90%)，以捕捉固定阈值可能错过的极端行情。
+**Formula | 公式**: `n = (Z × σ / E)²`
 
-### Auto Mode | 自动模式
--   **Setting**: `Threshold Mode = Auto`
--   Automatically toggles between **Fixed** and **Adaptive** based on real-time market conditions.
+Where | 其中:
+- **Z** = 1.96 (95% confidence | 95%置信度)
+- **σ** = Dynamic volatility (dual system) | 动态波动率（双重系统）
+- **E** = Precision parameter (2.0-3.5) | 精度参数
+
+**Dual Volatility System | 双重波动率系统**:
+```
+Short-term: 4 × RSI Length (快速响应)
+Long-term: 252D or custom period (稳定基准)
+Dynamic weighting: 70% long + 30% short (动态加权)
+↳ Switches to 60% short if recent > 1.2× long
+```
+
+**Benefits | 优势**:
+- ✅ Adapts to different assets automatically | 自动适应不同资产
+- ✅ Balanced between stability and responsiveness | 稳定性与响应性平衡
+- ✅ Statistical validity guaranteed | 保证统计有效性
+- ✅ Prevents lookback truncation | 防止回溯期截断
+
+### 2️⃣ Adaptive Threshold Selection | 自适应阈值选择
+
+**How it works | 工作原理**:
+
+The indicator monitors RSI volatility in real-time using **dual detection**:
+
+指标实时监控RSI波动率，使用**双重检测**：
+
+| Detection | Period | Trigger | Purpose |
+|:---------:|:------:|:-------:|---------|
+| **Fast** | 1.5 × RSI | vol > 8.0 | Quick response to volatility spikes<br/>快速响应波动突变 |
+| **Slow** | 3 × RSI | vol > 9.6 | Confirm sustained volatility<br/>确认持续波动 |
+
+**Auto Mode Logic | 自动模式逻辑**:
+```
+IF vol_fast > threshold OR vol_slow > threshold × 1.2
+  → Use Adaptive Percentile Thresholds
+ELSE
+  → Use Fixed Thresholds (30/70)
+```
+
+**Threshold Comparison | 阈值对比**:
+
+| Mode | Oversold 1 | Oversold 2 | Overbought 2 | Overbought 1 |
+|:----:|:----------:|:----------:|:------------:|:------------:|
+| **Fixed** | 30 | 40 | 65 | 75 |
+| **Adaptive** | P10 | P20 | P80 | P90 |
+
+### 3️⃣ Smart Divergence Detection | 智能背离检测
+
+**Dynamic Lookback | 动态回溯**: `4 × RSI Length` (默认 56 bars)
+
+**Z-Score Based Detection | 基于Z值检测**:
+```
+Price Z-Score = (Price - MA) / StdDev
+RSI Z-Score = (RSI - MA) / StdDev
+Divergence Strength = |Price Z - RSI Z|
+```
+
+**Trigger Conditions | 触发条件**:
+- Bullish: `Divergence < -threshold` AND `RSI < Oversold2`
+- Bearish: `Divergence > +threshold` AND `RSI > Overbought2`
+
+**Cooldown Period | 冷却期**: Prevents duplicate signals (default 5 bars)
 
 ---
 
-## Settings | 设置说明
+## Settings Reference | 设置参考
 
-### Advanced / 高级设置
+### 📊 Mode / 模式
 
-- **Lookback Mode / 回溯模式**:
-    - `Auto`: 使用统计公式自适应计算 (推荐大盘指数)
-    - `Fixed 252`: 传统固定 1 年
-    - `Custom`: 自定义数值 (100-1000)
-    
-- **Lookback Precision / 回溯精度**: 
-    - `High`: E=2.0 更精确，Lookback 更长 (大盘指数推荐)
-    - `Normal`: E=2.5 平衡
-    - `Low`: E=3.5 更宽松，Lookback 更短
-    
-- **Vol History / 波动历史**: 长期波动率的历史深度
-    - `6 Months`: 适合快速变化的市场
-    - `1 Year`: 默认，平衡性好
-    - `2 Years`: 适合稳定市场
+| Setting | Description | 中文说明 |
+|:-------:|-------------|----------|
+| **Aggressive** | -1 threshold adjustment, faster signals | 阈值-1，信号更灵敏，冷却期5根K线 |
+| **Standard** | Balanced (default) | 平衡模式（默认），冷却期10根K线 |
+| **Conservative** | +1 threshold adjustment, fewer signals | 阈值+1，信号更保守，冷却期15根K线 |
 
-- **Threshold Mode / 阈值模式**:
-    - `Auto`: 根据 RSI 波动率自动选择 (推荐)
-    - `Fixed`: 使用固定阈值 (30/70)
-    - `Adaptive`: 始终使用历史百分位阈值
+### 🧠 Adaptive / 自适应
 
-- **RSI Vol Threshold / RSI波动阈值**: Auto 模式切换阈值
-    - 大盘指数建议: 8.0
-    - 个股建议: 10.0
+| Parameter | Options | Recommendation | Description |
+|:---------:|---------|:--------------:|-------------|
+| **Lookback Mode** | Auto / Fixed 252 / Custom | `Auto` for indices | 回溯模式：Auto自动计算 |
+| **Precision** | High / Normal / Low | `High` for indices | 精度：High=更精确但更长 |
+| **Vol History** | 6M / 1Y / 2Y | `1Y` default | 波动率历史深度 |
+| **Threshold Mode** | Auto / Fixed / Adaptive | `Auto` recommended | 阈值模式：Auto自动切换 |
+| **RSI Vol Threshold** | 5.0 - 20.0 | `8.0` indices, `10.0` stocks | Auto模式切换阈值 |
 
-### Divergence / 背离
--   **Enable Divergence**: Turn on/off 💎 signals.
--   **Z-Score Threshold**: Strength required to trigger divergence (Default: 1.5).
+**Precision Parameter Mapping | 精度参数对照**:
+- **High**: E = 2.0 (longer lookback, higher precision) | 更长回溯期，更高精度
+- **Normal**: E = 2.5 (balanced) | 平衡
+- **Low**: E = 3.5 (shorter lookback, faster response) | 更短回溯期，更快响应
 
-### Intraday vs Daily
--   **Daily**: Uses Breadth (stocks > 20/50MA) for scoring.
--   **Intraday**: Automatically switches to use **Advance-Decline (ADD)** data for breadth scoring.
+### 📈 Core Settings / 核心设置
+
+| Parameter | Default | Range | Description |
+|:---------:|:-------:|:-----:|-------------|
+| **RSI Length** | 14 | 2-50 | Standard RSI period<br/>标准RSI周期 |
+
+### 🎯 Signal Thresholds / 信号阈值
+
+| Threshold | Default | Range | Description |
+|:---------:|:-------:|:-----:|-------------|
+| **Panic Low** | 6 | 3-10 | Strong buy signal<br/>强烈买入阈值 |
+| **Buy Zone** | 4 | 2-8 | Accumulate signal<br/>分批建仓阈值 |
+| **Caution** | -4 | -8~-2 | Take profit signal<br/>止盈信号阈值 |
+| **Reduce** | -6 | -10~-3 | Reduce position signal<br/>减仓信号阈值 |
+
+### 🔄 Signal Logic / 信号逻辑
+
+| Parameter | Default | Description |
+|:---------:|:-------:|-------------|
+| **Cooldown Bars** | 10 | Bars between signals (0 = no limit)<br/>信号间隔K线数（0=无限制） |
+| **Resonance Window** | 3 | Bars to detect market resonance<br/>共振检测窗口 |
+| **Min Markets** | 2 | Markets needed for resonance (1-3)<br/>触发共振所需市场数 |
+| **Trend MA Length** | 10 | Trend filter MA period<br/>趋势过滤均线周期 |
+| **Enable Trend Filter** | ON | Filter sell signals in uptrend<br/>上升趋势过滤卖出信号 |
+
+### 💎 Divergence / 背离
+
+| Parameter | Default | Range | Recommendation |
+|:---------:|:-------:|:-----:|----------------|
+| **Enable Divergence** | ON | - | Turn on/off divergence detection<br/>开启/关闭背离检测 |
+| **Z-Score Threshold** | 1.7 | 0.5-3.0 | Indices: 2.0, Stocks: 1.5-1.8<br/>指数2.0，个股1.5-1.8 |
+| **Cooldown Bars** | 5 | 0-30 | Prevent duplicate divergences<br/>防止重复背离信号 |
+
+### 📊 Fixed Thresholds / 固定阈值
+
+(Used when Threshold Mode = Fixed | 固定模式下使用)
+
+| Parameter | Default | Range |
+|:---------:|:-------:|:-----:|
+| **Oversold 1** | 30 | 10-40 |
+| **Oversold 2** | 40 | 20-50 |
+| **Overbought 2** | 65 | 50-80 |
+| **Overbought 1** | 75 | 60-90 |
+
+### 📍 Symbols / 标的
+
+**Market Indices | 市场指数**:
+- SPY, QQQ, IWM (or equivalents)
+
+**Breadth Indicators | 广度指标**:
+- S5TW/S5FI (S&P 500), NCTW/NCFI (Nasdaq), R2TW/R2FI (Russell 2000)
+- UVOL/DVOL (NYSE), UVOLQ/DVOLQ (Nasdaq)
+- ADD (Advance-Decline, for intraday)
+
+### 🖥️ Display / 显示
+
+| Setting | Options | Description |
+|:-------:|---------|-------------|
+| **Display Mode** | AUTO / SPY / QQQ / IWM / AGG | AUTO detects chart symbol<br/>AUTO自动检测图表标的 |
+| **Show Dashboard** | ON/OFF | Show/hide info panel<br/>显示/隐藏信息面板 |
+
+---
+
+## Dashboard Reference | 面板说明
+
+The dashboard displays real-time scoring and system status:
+
+面板实时显示评分和系统状态：
+
+| Row | Content | Description |
+|:---:|---------|-------------|
+| **RSI** | Score, Weight | RSI factor contribution<br/>RSI因子贡献 |
+| **FI(50D)** | Score, "Bottom" | 50D breadth (daily) or ADD (intraday)<br/>50日广度（日线）或涨跌差（日内） |
+| **TW(20D)** | Score, "Top" | 20D breadth factor<br/>20日广度因子 |
+| **Vol** | Score, Weight | Volume ratio factor<br/>成交量比因子 |
+| **Trend** | ↑UP/↓DOWN | Current trend direction<br/>当前趋势方向 |
+| **Mode** | Fixed/Adaptive | Current threshold mode | Vol value<br/>当前阈值模式 | 波动率 |
+| **Div** | BULL💎/BEAR💎/- | Divergence status | ON/OFF<br/>背离状态 | 开关 |
+| **Total** | Score, Signal | Composite score and signal type<br/>综合得分和信号类型 |
+| **Lookback** | Period, Health | Adaptive lookback | Health check (✓OK/⚠Check)<br/>自适应回溯期 | 健康检查 |
+
+**Health Indicators | 健康指标**:
+- ✓ OK: Lookback statistically valid, distribution width ≥12
+- ⚠ Check: May need more historical data or adjustment
+
+---
+
+## Usage Tips | 使用建议
+
+### For Index Trading | 指数交易
+
+**Recommended Settings | 推荐设置**:
+```
+Mode: Standard
+Lookback Mode: Auto
+Precision: High
+Threshold Mode: Auto
+RSI Vol Threshold: 8.0
+Divergence Threshold: 2.0
+```
+
+### For Stock Trading | 个股交易
+
+**Recommended Settings | 推荐设置**:
+```
+Mode: Aggressive
+Lookback Mode: Auto
+Precision: Normal
+Threshold Mode: Auto
+RSI Vol Threshold: 10.0
+Divergence Threshold: 1.5-1.8
+```
+
+### For Intraday Trading | 日内交易
+
+**Key Features | 关键特性**:
+- Automatically uses ADD (Advance-Decline) instead of daily breadth
+- Signal thresholds adjusted +2 automatically
+- Faster cooldown recommended (5-8 bars)
+
+**关键特性**:
+- 自动使用涨跌差(ADD)代替每日广度
+- 信号阈值自动+2调整
+- 推荐更快冷却期(5-8根K线)
+
+---
+
+## Alert System | 预警系统
+
+The indicator includes comprehensive alerts:
+
+指标包含全面的预警系统：
+
+| Alert | Emoji | Description |
+|:-----:|:-----:|-------------|
+| Panic Low | 🚀 | Strong buy opportunity detected<br/>检测到强烈买入机会 |
+| Buy Zone | 📈 | Accumulation zone entry<br/>进入低吸区域 |
+| Reduce | ⚠️ | High risk, consider reducing position<br/>高风险，考虑减仓 |
+| Caution | ⚡ | Take profit signal<br/>止盈信号 |
+| Resonance Buy | 🔥 | Multi-market buy resonance<br/>多市场买入共振 |
+| Resonance Risk | ❄️ | Multi-market risk resonance<br/>多市场风险共振 |
+| Bullish Divergence | 💎 | Bullish divergence detected<br/>检测到看涨背离 |
+| Bearish Divergence | 💎 | Bearish divergence detected<br/>检测到看跌背离 |
+
+**Auto-Detection | 自动检测**: Alerts automatically match your chart symbol (SPY/QQQ/IWM)
+
+---
+
+## Technical Details | 技术细节
+
+### Adaptive Lookback Calculation | 自适应回溯期计算
+
+```pine
+// Step 1: Short-term volatility (自适应到RSI长度)
+vol_short_period = rsiLen × 4
+vol_short = ta.stdev(spyRSI, vol_short_period)
+
+// Step 2: Long-term volatility (根据历史深度)
+vol_long_period = min(1000, vol_history_days × bars_per_day)
+vol_long = ta.stdev(spyRSI, vol_long_period)
+
+// Step 3: Dynamic weighting (动态加权)
+vol_base = vol_long × 0.7 + vol_short × 0.3
+recent_high = vol_short > vol_long × 1.2
+vol_dynamic = recent_high ? (vol_short × 0.6 + vol_long × 0.4) : vol_base
+
+// Step 4: Statistical calculation (统计公式)
+stat_required = pow(1.96 × vol_final / E, 2)
+auto_lookback = clamp(stat_required, 100, 1000)
+```
+
+### Health Check Criteria | 健康检查标准
+
+- ✅ Sample Coverage: `bar_index ≥ lookback × 0.8`
+- ✅ Statistical Validity: `actual_lookback ≥ required × 0.9`
+- ✅ Distribution Spread: `(OB1 - OS1) ≥ 12` (for indices)
+
+---
+
+## Limitations | 局限性
+
+- Requires sufficient historical data (minimum ~100 bars) | 需要足够历史数据（最少约100根K线）
+- Market breadth data (TW/FI) only available for US markets | 市场广度数据仅适用于美股
+- Intraday mode works best on hourly charts | 日内模式在小时图效果最佳
+- Divergence detection may lag in fast-moving markets | 快速市场中背离检测可能滞后
 
 ---
 
 ## Disclaimer | 免责声明
 
-This indicator is for educational purposes only. Past performance does not guarantee future results.
+This indicator is for educational and research purposes only. Past performance does not guarantee future results. Always conduct your own analysis and risk management.
 
-本指标仅供教育用途。历史表现不代表未来收益。
+本指标仅供教育和研究用途。历史表现不代表未来收益。请务必进行自己的分析和风险管理。
+
+---
+
+**Version**: 6.0  
+**Pine Script**: v6  
+**Last Updated**: 2025-12-15

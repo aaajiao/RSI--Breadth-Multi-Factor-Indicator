@@ -30,7 +30,7 @@ indicator("RSI+Breadth Multi-Factor v6", overlay=true, max_labels_count=500, max
 // Mode (评分阈值调整)
 //========================
 grpMode = "Mode / 模式"
-mode = input.string("Standard", "Signal Mode / 信号模式", options=["Aggressive","Standard","Conservative"], group=grpMode)
+mode = input.string("Standard", "Signal Mode 信号模式", options=["Aggressive","Standard","Conservative"], group=grpMode, tooltip="Aggressive: 更灵敏 More sensitive\nStandard: 平衡 Balanced\nConservative: 更保守 More conservative")
 
 //========================
 // Adaptive Settings (自适应设置)
@@ -38,26 +38,26 @@ mode = input.string("Standard", "Signal Mode / 信号模式", options=["Aggressi
 grpAdaptive = "Adaptive / 自适应"
 
 // Lookback 模式选择
-lookbackMode = input.string("Auto", "Lookback Mode / 回溯模式", options=["Auto", "Fixed 252", "Custom"], group=grpAdaptive, tooltip="Auto: 使用统计公式自适应计算\\nFixed 252: 传统固定1年\\nCustom: 自定义数值")
-lookbackCustom = input.int(252, "Custom Lookback / 自定义回溯", minval=100, maxval=1000, group=grpAdaptive)
+lookbackMode = input.string("Auto", "Lookback Mode 回溯模式", options=["Auto", "Fixed 252", "Custom"], group=grpAdaptive, tooltip="Auto: 自动计算 Auto calculate\nFixed 252: 固定1年 Fixed 1 year\nCustom: 自定义 Custom value")
+lookbackCustom = input.int(252, "Custom Lookback 自定义回溯", minval=100, maxval=1000, group=grpAdaptive)
 
 // 精度控制（大盘指数优化为 High 默认）
-lookbackPrecision = input.string("High", "Lookback Precision / 回溯精度", options=["High", "Normal", "Low"], group=grpAdaptive, tooltip="High: E=2.0 更精确(Lookback更长)\\nNormal: E=2.5 平衡\\nLow: E=3.5 更快(Lookback更短)")
+lookbackPrecision = input.string("High", "Precision 精度", options=["High", "Normal", "Low"], group=grpAdaptive, tooltip="High: 更精确 More precise\nNormal: 平衡 Balanced\nLow: 更快 Faster")
 
 // 长期波动历史深度
-volHistoryMode = input.string("1 Year", "Vol History / 波动历史", options=["6 Months", "1 Year", "2 Years"], group=grpAdaptive, tooltip="长期波动率的历史深度")
+volHistoryMode = input.string("1 Year", "Vol History 波动历史", options=["6 Months", "1 Year", "2 Years"], group=grpAdaptive, tooltip="波动率历史周期 Volatility history period")
 
 // Threshold Mode
-thresholdMode = input.string("Auto", "Threshold Mode / 阈值模式", options=["Auto", "Fixed", "Adaptive"], group=grpAdaptive, tooltip="Auto: 根据RSI波动率自动选择\\nFixed: 使用固定阈值\\nAdaptive: 使用历史百分位阈值")
+thresholdMode = input.string("Auto", "Threshold Mode 阈值模式", options=["Auto", "Fixed", "Adaptive"], group=grpAdaptive, tooltip="Auto: 自动选择 Auto select\nFixed: 固定阈值 Fixed values\nAdaptive: 动态阈值 Dynamic percentile")
 
 // RSI 波动阈值（大盘指数优化为 8.0）
-rsiVolThreshold = input.float(8.0, "RSI Vol Threshold / RSI波动阈值", minval=5.0, maxval=20.0, group=grpAdaptive, tooltip="Auto模式下,RSI标准差高于此值则使用自适应\\n大盘指数建议: 8.0\\n个股建议: 10.0")
+rsiVolThreshold = input.float(8.0, "RSI Vol Threshold RSI波动阈值", minval=5.0, maxval=20.0, group=grpAdaptive, tooltip="Auto模式触发值 Trigger for Auto mode\n指数8.0 / 个股10.0 Index 8.0 / Stock 10.0")
 
 //========================
 // Core Inputs
 //========================
-grp1 = "Core Settings / 核心设置"
-rsiLen = input.int(14, "RSI Length / RSI周期", minval=2, group=grp1)
+grp1 = "Core Settings 核心设置"
+rsiLen = input.int(14, "RSI Length RSI周期", minval=2, group=grp1)
 
 // 自动获取图表周期
 tfData = timeframe.period
@@ -66,36 +66,37 @@ intradayMode = timeframe.isintraday
 //========================
 // Fixed Thresholds (固定阈值 - 可配置)
 //========================
-grpFixedThresh = "Fixed Thresholds / 固定阈值"
-fixedRsiOversold1 = input.int(30, "RSI Oversold Lv1 / 超卖1", minval=10, maxval=40, group=grpFixedThresh)
-fixedRsiOversold2 = input.int(40, "RSI Oversold Lv2 / 超卖2", minval=20, maxval=50, group=grpFixedThresh)
-fixedRsiOverbought1 = input.int(75, "RSI Overbought Lv1 / 超买1", minval=60, maxval=90, group=grpFixedThresh)
-fixedRsiOverbought2 = input.int(65, "RSI Overbought Lv2 / 超买2", minval=50, maxval=80, group=grpFixedThresh)
+grpFixedThresh = "Fixed Thresholds 固定阈值"
+fixedRsiOversold1 = input.int(30, "Oversold Lv1 超卖1", minval=10, maxval=40, group=grpFixedThresh)
+fixedRsiOversold2 = input.int(40, "Oversold Lv2 超卖2", minval=20, maxval=50, group=grpFixedThresh)
+fixedRsiOverbought1 = input.int(75, "Overbought Lv1 超买1", minval=60, maxval=90, group=grpFixedThresh)
+fixedRsiOverbought2 = input.int(65, "Overbought Lv2 超买2", minval=50, maxval=80, group=grpFixedThresh)
 
-grp2 = "Signal Thresholds / 信号阈值"
-strongBotThreshold = input.int(6, "Panic Low Threshold / 恐慌低点", minval=3, maxval=10, group=grp2)
-botThreshold = input.int(4, "Buy Zone Threshold / 低吸区", minval=2, maxval=8, group=grp2)
-topThreshold = input.int(-4, "Caution Zone Threshold / 观望", minval=-8, maxval=-2, group=grp2)
-strongTopThreshold = input.int(-6, "Risk Zone Threshold / 减仓", minval=-10, maxval=-3, group=grp2)
+grp2 = "Signal Thresholds 信号阈值"
+strongBotThreshold = input.int(6, "Panic Low 恐慌低点", minval=3, maxval=10, group=grp2, tooltip="强烈买入信号 Strong buy signal")
+botThreshold = input.int(4, "Buy Zone 低吸区", minval=2, maxval=8, group=grp2, tooltip="分批建仓信号 Accumulate signal")
+topThreshold = input.int(-4, "Caution 观望", minval=-8, maxval=-2, group=grp2, tooltip="止盈信号 Take profit signal")
+strongTopThreshold = input.int(-6, "Reduce 减仓", minval=-10, maxval=-3, group=grp2, tooltip="减仓信号 Reduce position signal")
 
-grp3 = "Signal Logic / 信号逻辑"
-cooldownIn = input.int(10, "Cooldown Bars / 冷却周期", minval=0, group=grp3)
-confirmBars = input.int(3, "Resonance Window / 共振窗口", minval=0, group=grp3)
-minAgree = input.int(2, "Min Markets for Resonance / 共振最小市场数", minval=1, maxval=3, group=grp3)
+grp3 = "Signal Logic 信号逻辑"
+cooldownIn = input.int(10, "Cooldown Bars 冷却周期", minval=0, group=grp3, tooltip="信号间隔K线数 Bars between signals")
+confirmBars = input.int(3, "Resonance Window 共振窗口", minval=0, group=grp3, tooltip="共振检测范围 Resonance window bars")
+minAgree = input.int(2, "Min Markets 最小市场数", minval=1, maxval=3, group=grp3, tooltip="触发共振所需市场数 Markets needed for resonance")
 
 //========================
 // Divergence Settings (背离设置)
 //========================
-grpDiv = "Divergence / 背离"
-useDivergence = input.bool(true, "Enable Divergence / 启用背离", group=grpDiv)
-divZScoreThreshold = input.float(1.5, "Divergence Z-Score / 背离强度阈值", minval=0.5, maxval=3.0, step=0.1, group=grpDiv, tooltip="价格与RSI的Z-Score差值超过此阈值时触发背离")
+grpDiv = "Divergence 背离"
+useDivergence = input.bool(true, "Enable Divergence 启用背离", group=grpDiv)
+divZScoreThreshold = input.float(1.7, "Divergence Threshold 背离阈值", minval=0.5, maxval=3.0, step=0.1, group=grpDiv, tooltip="背离检测强度 Divergence strength\n平衡1.7 / 高质量2.0 / 灵敏1.5 Balanced/Quality/Sensitive")
+divCooldownBars = input.int(5, "Divergence Cooldown 背离冷却", minval=0, maxval=30, group=grpDiv, tooltip="背离间隔K线数 Bars between divergences\n推荐5-10 Recommended 5-10")
 
 //========================
 // Trend Filter (趋势过滤)
 //========================
-grp3b = "Trend Filter / 趋势过滤"
-trendMALen = input.int(10, "Trend MA Length / 趋势均线周期", minval=5, maxval=50, group=grp3b)
-useTrendFilter = input.bool(true, "Enable Trend Filter / 启用趋势过滤", group=grp3b)
+grp3b = "Trend Filter 趋势过滤"
+trendMALen = input.int(10, "Trend MA Length 趋势均线", minval=5, maxval=50, group=grp3b)
+useTrendFilter = input.bool(true, "Enable Trend Filter 启用趋势过滤", group=grp3b)
 
 //========================
 // Symbols
@@ -112,16 +113,16 @@ ncfiSym = input.symbol("INDEX:NCFI", "NCFI (% > 50D MA)", group=grp5)
 r2twSym = input.symbol("INDEX:R2TW", "R2TW (% > 20D MA)", group=grp5)
 r2fiSym = input.symbol("INDEX:R2FI", "R2FI (% > 50D MA)", group=grp5)
 
-grp5b = "Volume Breadth / 成交量广度"
-uvolSym = input.symbol("USI:UVOL", "Up Volume (NYSE)", group=grp5b)
-dvolSym = input.symbol("USI:DVOL", "Down Volume (NYSE)", group=grp5b)
-uvolqSym = input.symbol("USI:UVOLQ", "Up Volume (NASDAQ)", group=grp5b)
-dvolqSym = input.symbol("USI:DVOLQ", "Down Volume (NASDAQ)", group=grp5b)
-addSym = input.symbol("USI:ADD", "Advance-Decline (Intraday)", group=grp5b, tooltip="日内模式下用于广度代理")
+grp5b = "Volume Breadth 成交量广度"
+uvolSym = input.symbol("USI:UVOL", "Up Volume 上涨量 (NYSE)", group=grp5b)
+dvolSym = input.symbol("USI:DVOL", "Down Volume 下跌量 (NYSE)", group=grp5b)
+uvolqSym = input.symbol("USI:UVOLQ", "Up Volume 上涨量 (NASDAQ)", group=grp5b)
+dvolqSym = input.symbol("USI:DVOLQ", "Down Volume 下跌量 (NASDAQ)", group=grp5b)
+addSym = input.symbol("USI:ADD", "Advance-Decline 涨跌差", group=grp5b, tooltip="日内模式广度 Intraday breadth")
 
-grp6 = "Plot / 显示"
-plotMode = input.string("AUTO", "Display Mode / 显示模式", options=["AUTO","SPY","QQQ","IWM","AGG(共振)"], group=grp6)
-showDashboard = input.bool(true, "Show Dashboard / 显示面板", group=grp6)
+grp6 = "Plot 显示"
+plotMode = input.string("AUTO", "Display Mode 显示模式", options=["AUTO","SPY","QQQ","IWM","AGG(共振)"], group=grp6)
+showDashboard = input.bool(true, "Show Dashboard 显示面板", group=grp6)
 
 //========================
 // Mode presets
@@ -427,12 +428,43 @@ div_lookback = int(rsiLen * 4)  // 如果 RSI=14，则 56 根 K 线
 [qqqDivStrength, qqqPriceZ, qqqRsiZ] = f_divergence(qqqC, qqqRSI, div_lookback)
 [iwmDivStrength, iwmPriceZ, iwmRsiZ] = f_divergence(iwmC, iwmRSI, div_lookback)
 
-spyBullishDiv = useDivergence and spyDivStrength < -divZScoreThreshold and spyRSI < spyOS2
-spyBearishDiv = useDivergence and spyDivStrength > divZScoreThreshold and spyRSI > spyOB2
-qqqBullishDiv = useDivergence and qqqDivStrength < -divZScoreThreshold and qqqRSI < qqqOS2
-qqqBearishDiv = useDivergence and qqqDivStrength > divZScoreThreshold and qqqRSI > qqqOB2
-iwmBullishDiv = useDivergence and iwmDivStrength < -divZScoreThreshold and iwmRSI < iwmOS2
-iwmBearishDiv = useDivergence and iwmDivStrength > divZScoreThreshold and iwmRSI > iwmOB2
+// 原始背离检测（在 OS2/OB2 区域触发，平衡质量与灵敏度）
+spyBullishDivRaw = useDivergence and spyDivStrength < -divZScoreThreshold and spyRSI < spyOS2
+spyBearishDivRaw = useDivergence and spyDivStrength > divZScoreThreshold and spyRSI > spyOB2
+qqqBullishDivRaw = useDivergence and qqqDivStrength < -divZScoreThreshold and qqqRSI < qqqOS2
+qqqBearishDivRaw = useDivergence and qqqDivStrength > divZScoreThreshold and qqqRSI > qqqOB2
+iwmBullishDivRaw = useDivergence and iwmDivStrength < -divZScoreThreshold and iwmRSI < iwmOS2
+iwmBearishDivRaw = useDivergence and iwmDivStrength > divZScoreThreshold and iwmRSI > iwmOB2
+
+// 冷却期状态追踪
+var int spyLastBullDiv = na
+var int spyLastBearDiv = na
+var int qqqLastBullDiv = na
+var int qqqLastBearDiv = na
+var int iwmLastBullDiv = na
+var int iwmLastBearDiv = na
+
+// 应用冷却期过滤
+spyBullishDiv = f_applyCooldown(spyBullishDivRaw, divCooldownBars, spyLastBullDiv)
+spyBearishDiv = f_applyCooldown(spyBearishDivRaw, divCooldownBars, spyLastBearDiv)
+qqqBullishDiv = f_applyCooldown(qqqBullishDivRaw, divCooldownBars, qqqLastBullDiv)
+qqqBearishDiv = f_applyCooldown(qqqBearishDivRaw, divCooldownBars, qqqLastBearDiv)
+iwmBullishDiv = f_applyCooldown(iwmBullishDivRaw, divCooldownBars, iwmLastBullDiv)
+iwmBearishDiv = f_applyCooldown(iwmBearishDivRaw, divCooldownBars, iwmLastBearDiv)
+
+// 更新冷却期状态
+if spyBullishDiv
+    spyLastBullDiv := bar_index
+if spyBearishDiv
+    spyLastBearDiv := bar_index
+if qqqBullishDiv
+    qqqLastBullDiv := bar_index
+if qqqBearishDiv
+    qqqLastBearDiv := bar_index
+if iwmBullishDiv
+    iwmLastBullDiv := bar_index
+if iwmBearishDiv
+    iwmLastBearDiv := bar_index
 
 //========================
 // Trend MA & Signals (using modular function)
