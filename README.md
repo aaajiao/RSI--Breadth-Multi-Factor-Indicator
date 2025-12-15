@@ -19,9 +19,10 @@ A quantitative indicator that combines **RSI**, **Market Breadth**, **Volume Rat
 
 | Feature | Description | 中文说明 |
 |:---:|---|---|
-| 🧠 | **Adaptive Thresholds** | **自适应阈值**：基于历史波动率自动调整 RSI 超买超卖线 |
-| 💎 | **Divergence Detection** | **背离检测**：基于 Z-Score 强度的价格与 RSI 背离 |
-| ⚡ | **Auto Mode** | **自动模式**：高波动时自动切换为自适应，低波动保持固定 |
+| 🧠 | **Adaptive Lookback** | **自适应回溯**：使用统计公式 n=(Z×σ/E)² 自动计算最优回溯期 |
+| 💎 | **Smart Divergence** | **智能背离**：背离回溯期自动关联 RSI 长度 (4×)，避免周期错配 |
+| ⚡ | **Dual Detection** | **双重检测**：快速触发(1.5×)+慢速确认(3×)，更快响应市场变化 |
+| 📊 | **Health Monitor** | **健康监控**：实时验证 Lookback 统计有效性与分布宽度 |
 | 📉 | **Intraday Breadth** | **日内广度**：使用 `USI:ADD` (涨跌家数差) 支持小时图广度分析 |
 
 ---
@@ -61,12 +62,31 @@ The indicator monitors the volatility of RSI (Standard Deviation).
 
 ## Settings | 设置说明
 
-### Adaptive / 自适应
--   **Threshold Mode**:
-    -   `Auto`: Recommended. Smart switching. (推荐)
-    -   `Fixed`: Classic behavior (30/70).
-    -   `Adaptive`: Always use percentile-based thresholds.
--   **History Lookback**: Period for calculating percentiles (Default: 252 days).
+### Advanced / 高级设置
+
+- **Lookback Mode / 回溯模式**:
+    - `Auto`: 使用统计公式自适应计算 (推荐大盘指数)
+    - `Fixed 252`: 传统固定 1 年
+    - `Custom`: 自定义数值 (100-1000)
+    
+- **Lookback Precision / 回溯精度**: 
+    - `High`: E=2.0 更精确，Lookback 更长 (大盘指数推荐)
+    - `Normal`: E=2.5 平衡
+    - `Low`: E=3.5 更宽松，Lookback 更短
+    
+- **Vol History / 波动历史**: 长期波动率的历史深度
+    - `6 Months`: 适合快速变化的市场
+    - `1 Year`: 默认，平衡性好
+    - `2 Years`: 适合稳定市场
+
+- **Threshold Mode / 阈值模式**:
+    - `Auto`: 根据 RSI 波动率自动选择 (推荐)
+    - `Fixed`: 使用固定阈值 (30/70)
+    - `Adaptive`: 始终使用历史百分位阈值
+
+- **RSI Vol Threshold / RSI波动阈值**: Auto 模式切换阈值
+    - 大盘指数建议: 8.0
+    - 个股建议: 10.0
 
 ### Divergence / 背离
 -   **Enable Divergence**: Turn on/off 💎 signals.

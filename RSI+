@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v6", overlay=true, max_labels_count=500)
+indicator("RSI+Breadth Multi-Factor v6", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -36,9 +36,22 @@ mode = input.string("Standard", "Signal Mode / 信号模式", options=["Aggressi
 // Adaptive Settings (自适应设置)
 //========================
 grpAdaptive = "Adaptive / 自适应"
-thresholdMode = input.string("Auto", "Threshold Mode / 阈值模式", options=["Auto", "Fixed", "Adaptive"], group=grpAdaptive, tooltip="Auto: 根据RSI波动率自动选择\nFixed: 使用固定阈值\nAdaptive: 使用历史百分位阈值")
-adaptiveLookback = input.int(252, "History Lookback / 回溯周期", minval=50, maxval=500, group=grpAdaptive, tooltip="自适应阈值的计算回溯周期")
-rsiVolThreshold = input.float(10.0, "RSI Vol Threshold / RSI波动阈值", minval=5.0, maxval=20.0, group=grpAdaptive, tooltip="Auto模式下,RSI标准差高于此值则使用自适应")
+
+// Lookback 模式选择
+lookbackMode = input.string("Auto", "Lookback Mode / 回溯模式", options=["Auto", "Fixed 252", "Custom"], group=grpAdaptive, tooltip="Auto: 使用统计公式自适应计算\\nFixed 252: 传统固定1年\\nCustom: 自定义数值")
+lookbackCustom = input.int(252, "Custom Lookback / 自定义回溯", minval=100, maxval=1000, group=grpAdaptive)
+
+// 精度控制（大盘指数优化为 High 默认）
+lookbackPrecision = input.string("High", "Lookback Precision / 回溯精度", options=["High", "Normal", "Low"], group=grpAdaptive, tooltip="High: E=2.0 更精确(Lookback更长)\\nNormal: E=2.5 平衡\\nLow: E=3.5 更快(Lookback更短)")
+
+// 长期波动历史深度
+volHistoryMode = input.string("1 Year", "Vol History / 波动历史", options=["6 Months", "1 Year", "2 Years"], group=grpAdaptive, tooltip="长期波动率的历史深度")
+
+// Threshold Mode
+thresholdMode = input.string("Auto", "Threshold Mode / 阈值模式", options=["Auto", "Fixed", "Adaptive"], group=grpAdaptive, tooltip="Auto: 根据RSI波动率自动选择\\nFixed: 使用固定阈值\\nAdaptive: 使用历史百分位阈值")
+
+// RSI 波动阈值（大盘指数优化为 8.0）
+rsiVolThreshold = input.float(8.0, "RSI Vol Threshold / RSI波动阈值", minval=5.0, maxval=20.0, group=grpAdaptive, tooltip="Auto模式下,RSI标准差高于此值则使用自适应\\n大盘指数建议: 8.0\\n个股建议: 10.0")
 
 //========================
 // Core Inputs
@@ -151,10 +164,15 @@ f_applyCooldown(_rawSig, _coolBars, _lastBar) =>
 // Adaptive Threshold Calculation (自适应阈值计算)
 //========================
 f_adaptiveThresholds(_rsi, _lookback) =>
-    oversold1 = ta.percentile_linear_interpolation(_rsi, _lookback, 10)
-    oversold2 = ta.percentile_linear_interpolation(_rsi, _lookback, 20)
-    overbought1 = ta.percentile_linear_interpolation(_rsi, _lookback, 90)
-    overbought2 = ta.percentile_linear_interpolation(_rsi, _lookback, 80)
+    // 安全检查：确保 lookback 不超过可用的历史数据
+    // Pine Script 的 percentile 函数需要至少 lookback+1 根 bar
+    // 同时确保最小值为 10，保证百分位计算有意义
+    safe_lookback = math.max(10, math.min(_lookback, bar_index - 1))
+    
+    oversold1 = ta.percentile_linear_interpolation(_rsi, safe_lookback, 10)
+    oversold2 = ta.percentile_linear_interpolation(_rsi, safe_lookback, 20)
+    overbought1 = ta.percentile_linear_interpolation(_rsi, safe_lookback, 90)
+    overbought2 = ta.percentile_linear_interpolation(_rsi, safe_lookback, 80)
     [oversold1, oversold2, overbought1, overbought2]
 
 //========================
@@ -308,10 +326,66 @@ dvolq = f_secDaily(dvolqSym, close)
 addValue = f_sec(addSym, close)
 
 //========================
+// Dual Volatility System & Auto-Adaptive Lookback (双重波动率系统)
+//========================
+
+// Step 1: 短期波动（自适应到 RSI 长度）
+vol_short_period = rsiLen * 4
+vol_short = ta.stdev(spyRSI, vol_short_period)
+
+// Step 2: 长期波动（根据用户选择的历史深度）
+vol_history_days = volHistoryMode == "6 Months" ? 126 : volHistoryMode == "1 Year" ? 252 : 504
+
+// 根据时间框架调整（确保覆盖相同天数）
+tf_minutes = timeframe.in_seconds(timeframe.period) / 60
+bars_per_day = timeframe.isdaily or timeframe.isweekly or timeframe.ismonthly ? 1 : math.ceil(1440 / tf_minutes)
+vol_long_period = math.min(1000, vol_history_days * bars_per_day)
+vol_long = ta.stdev(spyRSI, vol_long_period)
+
+// Step 3: 动态加权组合
+// 基础：70% 长期 + 30% 短期（偏向稳定）
+vol_base = vol_long * 0.7 + vol_short * 0.3
+
+// 如果近期波动显著高于长期（> 1.2倍），切换到短期主导
+recent_high = vol_short > vol_long * 1.2
+vol_dynamic = recent_high ? (vol_short * 0.6 + vol_long * 0.4) : vol_base
+
+// 保守下限：不低于长期波动的 80%
+vol_final = math.max(vol_dynamic, vol_long * 0.8)
+
+// Step 4: 统计公式计算 Lookback
+// n = (Z × σ / E)²  其中 Z=1.96 (95%置信度)
+stat_error = lookbackPrecision == "High" ? 2.0 : lookbackPrecision == "Normal" ? 2.5 : 3.5
+stat_required = math.pow(1.96 * vol_final / stat_error, 2)
+auto_lookback = int(math.max(100, math.min(1000, stat_required)))
+
+// Step 5: 应用模式选择
+adaptiveLookback_raw = lookbackMode == "Custom" ? lookbackCustom : 
+                       lookbackMode == "Fixed 252" ? 252 : auto_lookback
+
+// Step 6: 安全限制 - 确保不超过可用历史数据
+// 在图表早期，bar_index 可能小于计算出的 lookback
+adaptiveLookback = int(math.min(adaptiveLookback_raw, bar_index))
+
+// Step 7: 健康度指标（大盘指数优化：分布宽度阈值 12）
+health_sample_coverage = bar_index >= adaptiveLookback_raw * 0.8
+health_stat_valid = adaptiveLookback >= stat_required * 0.9
+
+//========================
 // Adaptive Threshold Selection (自适应阈值选择)
 //========================
-rsiVol = ta.stdev(spyRSI, 50)
-useAdaptive = thresholdMode == "Auto" ? rsiVol > rsiVolThreshold : thresholdMode == "Adaptive"
+
+// 双重检测系统（快速触发 + 慢速确认）
+vol_fast_period = int(rsiLen * 1.5)  // 快速检测：约 21 根 K 线（如果 RSI=14）
+vol_fast = ta.stdev(spyRSI, vol_fast_period)
+
+vol_slow_period = int(rsiLen * 3)    // 慢速确认：约 42 根 K 线
+vol_slow = ta.stdev(spyRSI, vol_slow_period)
+
+// 自动模式逻辑：快速检测 OR 慢速确认
+useAdaptive = thresholdMode == "Auto" ? 
+              (vol_fast > rsiVolThreshold or vol_slow > rsiVolThreshold * 1.2) : 
+              thresholdMode == "Adaptive"
 
 [spyAdaptOS1, spyAdaptOS2, spyAdaptOB1, spyAdaptOB2] = f_adaptiveThresholds(spyRSI, adaptiveLookback)
 [qqqAdaptOS1, qqqAdaptOS2, qqqAdaptOB1, qqqAdaptOB2] = f_adaptiveThresholds(qqqRSI, adaptiveLookback)
@@ -332,6 +406,10 @@ iwmOS2 = useAdaptive ? iwmAdaptOS2 : fixedRsiOversold2
 iwmOB1 = useAdaptive ? iwmAdaptOB1 : fixedRsiOverbought1
 iwmOB2 = useAdaptive ? iwmAdaptOB2 : fixedRsiOverbought2
 
+// 健康度：分布宽度检查（大盘指数优化：≥12）
+health_distribution_spread = (spyOB1 - spyOS1) >= 12
+health_ok = health_sample_coverage and health_stat_valid and health_distribution_spread
+
 //========================
 // Calculate Scores per Market
 //========================
@@ -342,9 +420,12 @@ iwmOB2 = useAdaptive ? iwmAdaptOB2 : fixedRsiOverbought2
 //========================
 // Divergence Calculation
 //========================
-[spyDivStrength, spyPriceZ, spyRsiZ] = f_divergence(spyC, spyRSI, 50)
-[qqqDivStrength, qqqPriceZ, qqqRsiZ] = f_divergence(qqqC, qqqRSI, 50)
-[iwmDivStrength, iwmPriceZ, iwmRsiZ] = f_divergence(iwmC, iwmRSI, 50)
+// 动态背离回溯期（关联 RSI 长度）
+div_lookback = int(rsiLen * 4)  // 如果 RSI=14，则 56 根 K 线
+
+[spyDivStrength, spyPriceZ, spyRsiZ] = f_divergence(spyC, spyRSI, div_lookback)
+[qqqDivStrength, qqqPriceZ, qqqRsiZ] = f_divergence(qqqC, qqqRSI, div_lookback)
+[iwmDivStrength, iwmPriceZ, iwmRsiZ] = f_divergence(iwmC, iwmRSI, div_lookback)
 
 spyBullishDiv = useDivergence and spyDivStrength < -divZScoreThreshold and spyRSI < spyOS2
 spyBearishDiv = useDivergence and spyDivStrength > divZScoreThreshold and spyRSI > spyOB2
@@ -485,7 +566,7 @@ displayElevated = showSpy ? spyElevated : showQqq ? qqqElevated : showIwm ? iwmE
 thresholdModeText = useAdaptive ? "Adaptive" : "Fixed"
 
 if showDashboard and barstate.islast
-    var table dashboard = table.new(position.top_right, 3, 9, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
+    var table dashboard = table.new(position.top_right, 3, 10, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
     
     // Header
     table.cell(dashboard, 0, 0, "Factor", text_color=color.white, text_size=size.small)
@@ -533,7 +614,7 @@ if showDashboard and barstate.islast
     thresholdColor = useAdaptive ? color.aqua : color.yellow
     table.cell(dashboard, 0, 6, "Mode", text_color=color.white, text_size=size.small)
     table.cell(dashboard, 1, 6, thresholdModeText, text_color=thresholdColor, text_size=size.small)
-    table.cell(dashboard, 2, 6, "σ=" + str.tostring(rsiVol, "#.#"), text_color=color.gray, text_size=size.small)
+    table.cell(dashboard, 2, 6, "Vol=" + str.tostring(vol_fast, "#.#"), text_color=color.gray, text_size=size.small)
     
     // Divergence
     divText = displayBullishDiv ? "BULL 💎" : displayBearishDiv ? "BEAR 💎" : "-"
@@ -553,6 +634,14 @@ if showDashboard and barstate.islast
                  displayScore <= adjTopThreshold ? "CAUTION" : 
                  "HOLD"
     table.cell(dashboard, 2, 8, signalText, text_color=totalColor, text_size=size.small)
+    
+    // Lookback Health (新增)
+    health_text = health_ok ? "✓ OK" : "⚠ Check"
+    health_color = health_ok ? color.lime : color.orange
+    lookback_mode_display = lookbackMode == "Auto" ? "Auto" : lookbackMode == "Fixed 252" ? "252" : "Custom"
+    table.cell(dashboard, 0, 9, "Lookback", text_color=color.white, text_size=size.small)
+    table.cell(dashboard, 1, 9, str.tostring(adaptiveLookback), text_color=color.aqua, text_size=size.small)
+    table.cell(dashboard, 2, 9, health_text, text_color=health_color, text_size=size.small)
 
 //========================
 // Alerts
