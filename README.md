@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v6.1
+# RSI+ Breadth Multi-Factor Indicator v6.2
 
 **Adaptive Scoring System for US Market Timing | 美股多因子自适应择时系统**
 
@@ -27,7 +27,7 @@ A quantitative indicator that combines **RSI**, **Market Breadth**, **Volume Rat
 | 📈 | **Intraday Breadth** | **日内广度**：小时图自动使用 `USI:ADD` (涨跌家数差) 代替每日广度 |
 | 🎯 | **Health Monitor** | **健康监控**：实时验证 Lookback 统计有效性与分布宽度 (≥12) |
 | 🔔 | **Smart Alert** | **智能警报**：统一警报系统，上升沿检测防重复，单消息汇总所有信号 |
-| ⏱️ | **Signal Cooldown** | **信号冷却**：防止信号重叠，可配置冷却期 |
+| ⏱️ | **Dynamic Cooldown** | **动态冷却**：根据波动率自动调整信号间隔，高波动60%冷却/低波动150%冷却 |
 
 ---
 
@@ -184,6 +184,7 @@ Divergence Strength = |Price Z - RSI Z|
 | Parameter | Default | Description |
 |:---------:|:-------:|-------------|
 | **Cooldown Bars** | 10 | Bars between signals (0 = no limit)<br/>信号间隔K线数（0=无限制） |
+| **Dynamic Cooldown** | ON | Auto-adjust cooldown based on volatility<br/>根据波动率自动调整冷却期<br/>High vol=60% / Low vol=150% |
 | **Resonance Window** | 3 | Bars to detect market resonance<br/>共振检测窗口 |
 | **Min Markets** | 2 | Markets needed for resonance (1-3)<br/>触发共振所需市场数 |
 | **Trend MA Length** | 10 | Trend filter MA period<br/>趋势过滤均线周期 |
@@ -244,6 +245,7 @@ The dashboard displays real-time scoring and system status:
 | **Div** | BULL💎/BEAR💎/- | Divergence status | ON/OFF<br/>背离状态 | 开关 |
 | **Total** | Score, Signal | Composite score and signal type<br/>综合得分和信号类型 |
 | **Lookback** | Period, Health | Adaptive lookback | Health check (✓OK/⚠Check)<br/>自适应回溯期 | 健康检查 |
+| **Cooldown** | Bars, Dyn/Fix | Dynamic or fixed cooldown mode<br/>动态或固定冷却模式 |
 
 **Health Indicators | 健康指标**:
 - ✓ OK: Lookback statistically valid, distribution width ≥12
@@ -397,6 +399,22 @@ auto_lookback = clamp(stat_required, 100, 1000)
 
 ## Changelog | 更新日志
 
+### v6.2 (2025-12-17)
+
+**⏱️ Dynamic Cooldown System | 动态冷却系统**
+- **Volatility-Adaptive Cooldown**: Automatically adjusts signal cooldown period based on market volatility
+  波动率自适应冷却：根据市场波动率自动调整信号冷却期
+- **High Volatility Mode**: 60% cooldown for fast-moving markets (quick response)
+  高波动模式：快速市场使用60%冷却期（快速响应）
+- **Low Volatility Mode**: 150% cooldown for calm markets (reduce noise)
+  低波动模式：平静市场使用150%冷却期（降低噪音）
+- **Minimum Protection**: Always maintains minimum 3-bar cooldown
+  最小保护：始终保持至少3根K线的冷却期
+- **Dashboard Display**: Shows current cooldown bars and mode (Dyn/Fix) in panel
+  面板显示：在面板中显示当前冷却K线数和模式（动态/固定）
+
+---
+
 ### v6.1 (2025-12-16)
 
 **🔔 Smart Alert System | 智能警报系统**
@@ -453,7 +471,7 @@ This indicator is for educational and research purposes only. Past performance d
 
 ---
 
-**Version**: 6.1  
+**Version**: 6.2  
 **Pine Script**: v6  
-**Last Updated**: 2025-12-16
+**Last Updated**: 2025-12-17
 
