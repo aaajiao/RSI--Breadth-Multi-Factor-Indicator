@@ -676,20 +676,69 @@ if showDashboard and barstate.islast
     table.cell(dashboard, 2, 9, health_text, text_color=health_color, text_size=size.small)
 
 //========================
-// Alerts
+// Smart Alert (Unified Alert System)
+// 智能警报：单条消息汇总所有触发的信号，使用上升沿检测避免重复通知
 //========================
+grpAlert = "Alerts 警报"
+enable_smart_alert = input.bool(true, "Enable Smart Alert 启用智能警报", group=grpAlert, 
+    tooltip="统一智能警报：单消息汇总所有触发信号\nUnified alerts: aggregate all signals into one message")
+
+// 信号条件 (自动检测图表标的)
 autoBotTrig = (isSpy and spyBotTrig) or (isQqq and qqqBotTrig) or (isIwm and iwmBotTrig)
 autoStrongBot = (isSpy and spyBotTrig and spyStrongBot) or (isQqq and qqqBotTrig and qqqStrongBot) or (isIwm and iwmBotTrig and iwmStrongBot)
 autoTopTrig = (isSpy and spyTopTrig) or (isQqq and qqqTopTrig) or (isIwm and iwmTopTrig)
 autoStrongTop = (isSpy and spyTopTrig and spyStrongTop) or (isQqq and qqqTopTrig and qqqStrongTop) or (isIwm and iwmTopTrig and iwmStrongTop)
 autoBullishDiv = (isSpy and spyBullishDiv) or (isQqq and qqqBullishDiv) or (isIwm and iwmBullishDiv)
 autoBearishDiv = (isSpy and spyBearishDiv) or (isQqq and qqqBearishDiv) or (isIwm and iwmBearishDiv)
+autoElevated = (isSpy and spyElevated) or (isQqq and qqqElevated) or (isIwm and iwmElevated)
 
-alertcondition(autoStrongBot, title="🚀 Panic Low", message="🚀 Panic Low - Strong buy opportunity - {{ticker}} @ {{time}}")
-alertcondition(autoBotTrig, title="📈 Buy Zone", message="📈 Buy Zone entry signal - {{ticker}} @ {{time}}")
-alertcondition(autoStrongTop, title="⚠️ Reduce", message="⚠️ Reduce - High risk, consider reducing - {{ticker}} @ {{time}}")
-alertcondition(autoTopTrig, title="⚡ Caution", message="⚡ Caution - Consider taking profits - {{ticker}} @ {{time}}")
-alertcondition(aggBottomEdge, title="🔥 Resonance Buy", message="🔥 Multi-market resonance buy - {{ticker}} @ {{time}}")
-alertcondition(aggTopEdge, title="❄️ Resonance Risk", message="❄️ Multi-market resonance risk - {{ticker}} @ {{time}}")
-alertcondition(autoBullishDiv, title="💎 Bullish Divergence", message="💎 Bullish divergence detected - {{ticker}} @ {{time}}")
-alertcondition(autoBearishDiv, title="💎 Bearish Divergence", message="💎 Bearish divergence detected - {{ticker}} @ {{time}}")
+if enable_smart_alert
+    // === 买入信号汇总 (Rising Edge Detection) ===
+    has_buy_signal = autoBotTrig or aggBottomEdge or autoBullishDiv
+    has_buy_signal_prev = autoBotTrig[1] or aggBottomEdge[1] or autoBullishDiv[1]
+
+    // 只在新信号出现时触发（上升沿）
+    if has_buy_signal and not has_buy_signal_prev
+        msg = str.format("{0}: 🟢 BUY → ", syminfo.ticker)
+        
+        // 添加所有触发的信号标签
+        if autoStrongBot
+            msg := msg + "🚀恐慌低点 "
+        else if autoBotTrig
+            msg := msg + "📈低吸区 "
+        if aggBottomEdge
+            msg := msg + "🔥共振 "
+        if autoBullishDiv
+            msg := msg + "💎背离 "
+        
+        // 添加上下文信息
+        trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
+        msg := msg + str.format("| Score:{0,number,#.1} {1}", displayScore, trend_ctx)
+        
+        alert(msg, alert.freq_once_per_bar)
+
+    // === 卖出/风险信号汇总 (Rising Edge Detection) ===
+    has_sell_signal = autoTopTrig or aggTopEdge or autoBearishDiv
+    has_sell_signal_prev = autoTopTrig[1] or aggTopEdge[1] or autoBearishDiv[1]
+
+    // 只在新信号出现时触发（上升沿）
+    if has_sell_signal and not has_sell_signal_prev
+        msg = str.format("{0}: 🔴 RISK → ", syminfo.ticker)
+        
+        // 添加所有触发的信号标签
+        if autoStrongTop
+            msg := msg + "⚠️减仓 "
+        else if autoTopTrig
+            msg := msg + "⚡观望 "
+        if autoElevated and not autoTopTrig
+            msg := msg + "⭐高估 "
+        if aggTopEdge
+            msg := msg + "❄️共振 "
+        if autoBearishDiv
+            msg := msg + "💎背离 "
+        
+        // 添加上下文信息
+        trend_ctx = displayUptrend ? "↑UP(升势中)" : "↓DOWN"
+        msg := msg + str.format("| Score:{0,number,#.1} {1}", displayScore, trend_ctx)
+        
+        alert(msg, alert.freq_once_per_bar)

@@ -20,13 +20,14 @@ A quantitative indicator that combines **RSI**, **Market Breadth**, **Volume Rat
 | Feature | Description | 中文说明 |
 |:---:|---|---|
 | 🧠 | **Auto-Adaptive Lookback** | **自动回溯期**：使用统计公式 n=(Z×σ/E)² 自动计算最优回溯期 (100-1000 bars) |
-| � | **Dual Volatility System** | **双重波动率**：结合短期 (4×RSI) 与长期 (252D) 波动率，动态加权 |
+| 📊 | **Dual Volatility System** | **双重波动率**：结合短期 (4×RSI) 与长期 (252D) 波动率，动态加权 |
 | ⚡ | **Dual Detection Thresholds** | **双重检测**：快速触发 (1.5×RSI) + 慢速确认 (3×RSI)，捕捉波动变化 |
-| �💎 | **Smart Divergence** | **智能背离**：背离回溯期自动关联 RSI 长度 (4×)，避免周期错配 |
+| 💎 | **Smart Divergence** | **智能背离**：背离回溯期自动关联 RSI 长度 (4×)，避免周期错配 |
 | 🔥 | **Market Resonance** | **市场共振**：检测多市场同时触发买入/卖出信号 |
 | 📈 | **Intraday Breadth** | **日内广度**：小时图自动使用 `USI:ADD` (涨跌家数差) 代替每日广度 |
 | 🎯 | **Health Monitor** | **健康监控**：实时验证 Lookback 统计有效性与分布宽度 (≥12) |
-| �️ | **Signal Cooldown** | **信号冷却**：防止信号重叠，可配置冷却期 |
+| 🔔 | **Smart Alert** | **智能警报**：统一警报系统，上升沿检测防重复，单消息汇总所有信号 |
+| ⏱️ | **Signal Cooldown** | **信号冷却**：防止信号重叠，可配置冷却期 |
 
 ---
 
@@ -290,24 +291,67 @@ Divergence Threshold: 1.5-1.8
 
 ---
 
-## Alert System | 预警系统
+## Smart Alert System | 智能警报系统
 
-The indicator includes comprehensive alerts:
+The indicator uses a **Unified Smart Alert** system with **Rising Edge Detection** to prevent duplicate notifications.
 
-指标包含全面的预警系统：
+指标使用**统一智能警报**系统，配合**上升沿检测**防止重复通知。
 
-| Alert | Emoji | Description |
-|:-----:|:-----:|-------------|
-| Panic Low | 🚀 | Strong buy opportunity detected<br/>检测到强烈买入机会 |
-| Buy Zone | 📈 | Accumulation zone entry<br/>进入低吸区域 |
-| Reduce | ⚠️ | High risk, consider reducing position<br/>高风险，考虑减仓 |
-| Caution | ⚡ | Take profit signal<br/>止盈信号 |
-| Resonance Buy | 🔥 | Multi-market buy resonance<br/>多市场买入共振 |
-| Resonance Risk | ❄️ | Multi-market risk resonance<br/>多市场风险共振 |
-| Bullish Divergence | 💎 | Bullish divergence detected<br/>检测到看涨背离 |
-| Bearish Divergence | 💎 | Bearish divergence detected<br/>检测到看跌背离 |
+### How It Works | 工作原理
 
-**Auto-Detection | 自动检测**: Alerts automatically match your chart symbol (SPY/QQQ/IWM)
+```
+1. Aggregate all triggered signals into ONE message
+   将所有触发的信号汇总到一条消息
+   
+2. Rising Edge Detection: Only fires when signal changes from OFF → ON
+   上升沿检测：仅在信号从无到有时触发
+   
+3. Include context info (Score, Trend) for quick decision making
+   包含上下文信息（得分、趋势）以便快速决策
+```
+
+### Alert Message Format | 警报消息格式
+
+**Buy Signals | 买入信号**:
+```
+SPY: 🟢 BUY → 🚀恐慌低点 🔥共振 💎背离 | Score:6.5 ↑UP
+```
+
+**Sell/Risk Signals | 卖出/风险信号**:
+```
+QQQ: 🔴 RISK → ⚠️减仓 ❄️共振 | Score:-6.2 ↓DOWN
+```
+
+### Signal Tags | 信号标签
+
+| Tag | Signal | Description |
+|:---:|:------:|-------------|
+| 🚀 | **恐慌低点** | Panic Low - Strong buy opportunity |
+| 📈 | **低吸区** | Buy Zone - Accumulation zone |
+| 🔥 | **共振** | Resonance - Multi-market agreement |
+| 💎 | **背离** | Divergence - Price/RSI divergence |
+| ⚠️ | **减仓** | Reduce - High risk, reduce position |
+| ⚡ | **观望** | Caution - Take profit signal |
+| ⭐ | **高估** | Elevated - Overbought but uptrend |
+| ❄️ | **共振** | Resonance Risk - Multi-market risk |
+
+### Settings | 设置
+
+| Parameter | Default | Description |
+|:---------:|:-------:|-------------|
+| **Enable Smart Alert** | ON | Turn on/off unified alerts<br/>开启/关闭统一警报 |
+
+### Benefits | 优势
+
+- ✅ **Single Message**: All signals in one notification, no spam
+- ✅ **Deduplication**: Rising edge detection prevents repeats
+- ✅ **Rich Context**: Includes score and trend for quick action
+- ✅ **Auto-Detection**: Matches your chart symbol (SPY/QQQ/IWM)
+
+- ✅ **单条消息**：所有信号汇总到一条通知，无骚扰
+- ✅ **去重**：上升沿检测防止重复
+- ✅ **丰富上下文**：包含得分和趋势，方便快速决策
+- ✅ **自动检测**：自动匹配图表标的（SPY/QQQ/IWM）
 
 ---
 
