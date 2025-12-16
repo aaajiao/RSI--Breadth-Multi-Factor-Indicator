@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v6
+# RSI+ Breadth Multi-Factor Indicator v6.1
 
 **Adaptive Scoring System for US Market Timing | 美股多因子自适应择时系统**
 
@@ -222,7 +222,7 @@ Divergence Strength = |Price Z - RSI Z|
 
 | Setting | Options | Description |
 |:-------:|---------|-------------|
-| **Display Mode** | AUTO / SPY / QQQ / IWM / AGG | AUTO detects chart symbol<br/>AUTO自动检测图表标的 |
+| **Display Mode** | AUTO / SPY / QQQ / IWM / AGG(共振) | AUTO detects chart symbol<br/>AUTO自动检测图表标的; AGG shows multi-market resonance<br/>AGG显示多市场共振 |
 | **Show Dashboard** | ON/OFF | Show/hide info panel<br/>显示/隐藏信息面板 |
 
 ---
@@ -395,6 +395,56 @@ auto_lookback = clamp(stat_required, 100, 1000)
 
 ---
 
+## Changelog | 更新日志
+
+### v6.1 (2025-12-16)
+
+**🔔 Smart Alert System | 智能警报系统**
+- **Unified Smart Alert**: Replaced multiple `alertcondition` calls with a single unified alert system
+  统一智能警报：用单一警报系统替代多个 alertcondition 调用
+- **Rising Edge Detection**: Prevents duplicate notifications by only triggering when signals change from OFF → ON
+  上升沿检测：仅在信号从无到有时触发，防止重复通知
+- **Aggregated Messages**: All triggered signals (MTF, Divergence, Resonance) combined into one message
+  信号汇总：所有触发的信号（多因子、背离、共振）合并为一条消息
+- **Context Info**: Includes Score and Trend direction for quick decision making
+  上下文信息：包含得分和趋势方向，便于快速决策
+
+---
+
+### v6.0 (2025-12-15)
+
+**🧠 Adaptive Technology | 自适应技术**
+- **Auto-Adaptive Lookback**: Statistical formula `n=(Z×σ/E)²` for optimal lookback period (100-1000 bars)
+  自动回溯期：使用统计公式自动计算最优回溯期
+- **Dual Volatility System**: 70% long-term + 30% short-term volatility weighting
+  双重波动率：长期70%+短期30%动态加权
+- **Dual Detection Thresholds**: Fast (1.5×RSI) + Slow (3×RSI) confirmation
+  双重检测：快速触发+慢速确认
+
+**💎 Smart Divergence | 智能背离**
+- **Dynamic Lookback**: Divergence period linked to RSI length (4×)
+  动态回溯：背离周期关联RSI长度
+- **Z-Score Detection**: Statistical divergence strength measurement
+  Z值检测：统计背离强度测量
+- **Cooldown Period**: Prevents duplicate divergence signals
+  冷却期：防止重复背离信号
+
+**📊 Dashboard Enhancements | 面板增强**
+- **Health Monitor**: Real-time validation of lookback statistics
+  健康监控：实时验证回溯统计有效性
+- **Mode Display**: Shows current threshold mode (Fixed/Adaptive)
+  模式显示：显示当前阈值模式
+
+**🔥 Market Resonance | 市场共振**
+- Multi-market simultaneous signal detection (SPY/QQQ/IWM)
+  多市场同时信号检测
+
+**📈 Intraday Support | 日内支持**
+- Uses ADD (Advance-Decline) instead of daily breadth for hourly charts
+  小时图自动使用涨跌差代替每日广度
+
+---
+
 ## Disclaimer | 免责声明
 
 This indicator is for educational and research purposes only. Past performance does not guarantee future results. Always conduct your own analysis and risk management.
@@ -403,6 +453,7 @@ This indicator is for educational and research purposes only. Past performance d
 
 ---
 
-**Version**: 6.0  
+**Version**: 6.1  
 **Pine Script**: v6  
-**Last Updated**: 2025-12-15
+**Last Updated**: 2025-12-16
+
