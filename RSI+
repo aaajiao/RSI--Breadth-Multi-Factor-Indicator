@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v6.1", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v6.2", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -80,6 +80,7 @@ strongTopThreshold = input.int(-6, "Reduce 减仓", minval=-10, maxval=-3, group
 
 grp3 = "Signal Logic 信号逻辑"
 cooldownIn = input.int(10, "Cooldown Bars 冷却周期", minval=0, group=grp3, tooltip="信号间隔K线数 Bars between signals")
+useDynamicCooldown = input.bool(true, "Dynamic Cooldown 动态冷却", group=grp3, tooltip="根据波动率自动调整冷却期\nAuto-adjust cooldown based on volatility\n高波动=短冷却 | 低波动=长冷却")
 confirmBars = input.int(3, "Resonance Window 共振窗口", minval=0, group=grp3, tooltip="共振检测范围 Resonance window bars")
 minAgree = input.int(2, "Min Markets 最小市场数", minval=1, maxval=3, group=grp3, tooltip="触发共振所需市场数 Markets needed for resonance")
 
@@ -133,7 +134,7 @@ adjBotThreshold = botThreshold - modeAdjust - intradayAdjust
 adjStrongBotThreshold = strongBotThreshold - modeAdjust - intradayAdjust
 adjTopThreshold = topThreshold + modeAdjust + intradayAdjust
 adjStrongTopThreshold = strongTopThreshold + modeAdjust + intradayAdjust
-cooldownBars = mode == "Aggressive" ? 5 : mode == "Conservative" ? 15 : cooldownIn
+cooldownBarsBase = mode == "Aggressive" ? 5 : mode == "Conservative" ? 15 : cooldownIn
 
 //========================
 // Helpers
@@ -160,6 +161,17 @@ f_recent(_cond, _bars) =>
 f_applyCooldown(_rawSig, _coolBars, _lastBar) =>
     can = na(_lastBar) or (bar_index - _lastBar > _coolBars)
     _rawSig and (_coolBars == 0 or can)
+
+// Dynamic Cooldown Function (动态冷却计算)
+// High volatility → shorter cooldown (market moves fast, need quick response)
+// Low volatility → longer cooldown (market calm, avoid noise signals)
+f_dynamicCooldown(_baseCooldown, _volFast, _volThreshold) =>
+    volRatio = _volFast / _volThreshold
+    // 高波动 (>1.2x): 60% 冷却 | 正常: 100% | 低波动 (<0.8x): 150% 冷却
+    adjustedCooldown = volRatio > 1.2 ? int(_baseCooldown * 0.6) :
+                       volRatio < 0.8 ? int(_baseCooldown * 1.5) :
+                       _baseCooldown
+    math.max(3, adjustedCooldown)  // 最小3根K线
 
 //========================
 // Adaptive Threshold Calculation (自适应阈值计算)
@@ -388,6 +400,11 @@ useAdaptive = thresholdMode == "Auto" ?
               (vol_fast > rsiVolThreshold or vol_slow > rsiVolThreshold * 1.2) : 
               thresholdMode == "Adaptive"
 
+// Dynamic Cooldown Calculation (动态冷却计算)
+// 在波动率计算后应用动态冷却
+cooldownBars = useDynamicCooldown ? f_dynamicCooldown(cooldownBarsBase, vol_fast, rsiVolThreshold) : cooldownBarsBase
+divCooldownDynamic = useDynamicCooldown ? f_dynamicCooldown(divCooldownBars, vol_fast, rsiVolThreshold) : divCooldownBars
+
 [spyAdaptOS1, spyAdaptOS2, spyAdaptOB1, spyAdaptOB2] = f_adaptiveThresholds(spyRSI, adaptiveLookback)
 [qqqAdaptOS1, qqqAdaptOS2, qqqAdaptOB1, qqqAdaptOB2] = f_adaptiveThresholds(qqqRSI, adaptiveLookback)
 [iwmAdaptOS1, iwmAdaptOS2, iwmAdaptOB1, iwmAdaptOB2] = f_adaptiveThresholds(iwmRSI, adaptiveLookback)
@@ -445,12 +462,12 @@ var int iwmLastBullDiv = na
 var int iwmLastBearDiv = na
 
 // 应用冷却期过滤
-spyBullishDiv = f_applyCooldown(spyBullishDivRaw, divCooldownBars, spyLastBullDiv)
-spyBearishDiv = f_applyCooldown(spyBearishDivRaw, divCooldownBars, spyLastBearDiv)
-qqqBullishDiv = f_applyCooldown(qqqBullishDivRaw, divCooldownBars, qqqLastBullDiv)
-qqqBearishDiv = f_applyCooldown(qqqBearishDivRaw, divCooldownBars, qqqLastBearDiv)
-iwmBullishDiv = f_applyCooldown(iwmBullishDivRaw, divCooldownBars, iwmLastBullDiv)
-iwmBearishDiv = f_applyCooldown(iwmBearishDivRaw, divCooldownBars, iwmLastBearDiv)
+spyBullishDiv = f_applyCooldown(spyBullishDivRaw, divCooldownDynamic, spyLastBullDiv)
+spyBearishDiv = f_applyCooldown(spyBearishDivRaw, divCooldownDynamic, spyLastBearDiv)
+qqqBullishDiv = f_applyCooldown(qqqBullishDivRaw, divCooldownDynamic, qqqLastBullDiv)
+qqqBearishDiv = f_applyCooldown(qqqBearishDivRaw, divCooldownDynamic, qqqLastBearDiv)
+iwmBullishDiv = f_applyCooldown(iwmBullishDivRaw, divCooldownDynamic, iwmLastBullDiv)
+iwmBearishDiv = f_applyCooldown(iwmBearishDivRaw, divCooldownDynamic, iwmLastBearDiv)
 
 // 更新冷却期状态
 if spyBullishDiv
@@ -598,7 +615,7 @@ displayElevated = showSpy ? spyElevated : showQqq ? qqqElevated : showIwm ? iwmE
 thresholdModeText = useAdaptive ? "Adaptive" : "Fixed"
 
 if showDashboard and barstate.islast
-    var table dashboard = table.new(position.top_right, 3, 10, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
+    var table dashboard = table.new(position.top_right, 3, 11, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
     
     // Header
     table.cell(dashboard, 0, 0, "Factor", text_color=color.white, text_size=size.small)
@@ -674,6 +691,13 @@ if showDashboard and barstate.islast
     table.cell(dashboard, 0, 9, "Lookback", text_color=color.white, text_size=size.small)
     table.cell(dashboard, 1, 9, str.tostring(adaptiveLookback), text_color=color.aqua, text_size=size.small)
     table.cell(dashboard, 2, 9, health_text, text_color=health_color, text_size=size.small)
+    
+    // Cooldown (动态冷却)
+    cooldown_color = useDynamicCooldown ? color.aqua : color.yellow
+    cooldown_text = useDynamicCooldown ? "Dyn" : "Fix"
+    table.cell(dashboard, 0, 10, "Cooldown", text_color=color.white, text_size=size.small)
+    table.cell(dashboard, 1, 10, str.tostring(cooldownBars) + "b", text_color=cooldown_color, text_size=size.small)
+    table.cell(dashboard, 2, 10, cooldown_text, text_color=cooldown_color, text_size=size.small)
 
 //========================
 // Smart Alert (Unified Alert System)
