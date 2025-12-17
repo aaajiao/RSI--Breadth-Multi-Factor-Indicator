@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v6.2", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v6.5", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -72,11 +72,38 @@ fixedRsiOversold2 = input.int(40, "Oversold Lv2 超卖2", minval=20, maxval=50, 
 fixedRsiOverbought1 = input.int(75, "Overbought Lv1 超买1", minval=60, maxval=90, group=grpFixedThresh)
 fixedRsiOverbought2 = input.int(65, "Overbought Lv2 超买2", minval=50, maxval=80, group=grpFixedThresh)
 
-grp2 = "Signal Thresholds 信号阈值"
-strongBotThreshold = input.int(6, "Panic Low 恐慌低点", minval=3, maxval=10, group=grp2, tooltip="强烈买入信号 Strong buy signal")
-botThreshold = input.int(4, "Buy Zone 低吸区", minval=2, maxval=8, group=grp2, tooltip="分批建仓信号 Accumulate signal")
-topThreshold = input.int(-4, "Caution 观望", minval=-8, maxval=-2, group=grp2, tooltip="止盈信号 Take profit signal")
-strongTopThreshold = input.int(-6, "Reduce 减仓", minval=-10, maxval=-3, group=grp2, tooltip="减仓信号 Reduce position signal")
+grp2 = "Signal Thresholds 信号阈值 (%)"
+
+buyThresholdPct = input.int(50, "Buy Sensitivity 买入灵敏度 %", 
+    minval=25, maxval=75, step=5, group=grp2,
+    tooltip="控制买入信号触发难度\n50%=平衡 | <50%=更严格 | >50%=更灵敏\n" +
+            "═══════════════════════\n" +
+            "📈 Buy Zone = 此值\n🚀 Panic Low = 此值 + 25%\n" +
+            "═══════════════════════\n" +
+            "Buy signal sensitivity\n50%=Balanced | <50%=Stricter | >50%=Sensitive")
+
+sellThresholdPct = input.int(45, "Sell Sensitivity 卖出灵敏度 %", 
+    minval=25, maxval=75, step=5, group=grp2,
+    tooltip="控制卖出信号触发难度\n45%=平衡 | <45%=更严格 | >45%=更灵敏\n" +
+            "═══════════════════════\n" +
+            "⚡ Caution = 此值\n⚠️ Reduce = 此值 + 25%\n" +
+            "═══════════════════════\n" +
+            "Sell signal sensitivity\n45%=Balanced | <45%=Stricter | >45%=Sensitive")
+
+// 固定偏移量：强信号比弱信号高25%
+// Fixed offset: strong signal is 25% higher than weak signal
+strongOffset = 25
+
+// 理论最大分数（基于评分函数）
+// Theoretical max scores (based on scoring functions)
+maxBuyScore = 8   // RSI(+2) + FI(+3) + TW(+1) + Vol(+2)
+maxSellScore = 9  // RSI(-2) + FI(-2) + TW(-3) + Vol(-2)
+
+// 动态计算阈值 / Dynamically calculate thresholds
+botThreshold = int(maxBuyScore * buyThresholdPct / 100)
+strongBotThreshold = int(maxBuyScore * (buyThresholdPct + strongOffset) / 100)
+topThreshold = -int(maxSellScore * sellThresholdPct / 100)
+strongTopThreshold = -int(maxSellScore * (sellThresholdPct + strongOffset) / 100)
 
 grp3 = "Signal Logic 信号逻辑"
 cooldownIn = input.int(10, "Cooldown Bars 冷却周期", minval=0, group=grp3, tooltip="信号间隔K线数 Bars between signals")
@@ -124,6 +151,20 @@ addSym = input.symbol("USI:ADD", "Advance-Decline 涨跌差", group=grp5b, toolt
 grp6 = "Plot 显示"
 plotMode = input.string("AUTO", "Display Mode 显示模式", options=["AUTO","SPY","QQQ","IWM","AGG(共振)"], group=grp6)
 showDashboard = input.bool(true, "Show Dashboard 显示面板", group=grp6)
+
+// Dashboard Customization 面板自定义
+dashboardMode = input.string("Full", "Dashboard Mode 面板模式", 
+    options=["Full", "Mobile"], group=grp6,
+    tooltip="Full: 完整11行详情 | Mobile: 精简3行核心信息\nFull: 11 rows detail | Mobile: 3 rows essential")
+
+dashboardPosition = input.string("Top Right", "Panel Position 面板位置", 
+    options=["Top Left", "Top Right", "Bottom Left", "Bottom Right", 
+             "Middle Left", "Middle Right"], group=grp6,
+    tooltip="面板显示位置 Dashboard location on chart")
+
+dashboardFontSize = input.string("Small", "Font Size 字体大小", 
+    options=["Tiny", "Small", "Normal", "Large"], group=grp6,
+    tooltip="Tiny: 最小 | Small: 默认 | Normal: 中等 | Large: 最大")
 
 //========================
 // Mode presets
@@ -614,98 +655,155 @@ displayElevated = showSpy ? spyElevated : showQqq ? qqqElevated : showIwm ? iwmE
 
 thresholdModeText = useAdaptive ? "Adaptive" : "Fixed"
 
+// Position mapping 位置映射
+f_getPosition(_pos) =>
+    switch _pos
+        "Top Left"     => position.top_left
+        "Top Right"    => position.top_right
+        "Bottom Left"  => position.bottom_left
+        "Bottom Right" => position.bottom_right
+        "Middle Left"  => position.middle_left
+        "Middle Right" => position.middle_right
+        => position.top_right
+
+// Font size mapping 字体映射
+f_getFontSize(_size) =>
+    switch _size
+        "Tiny"   => size.tiny
+        "Small"  => size.small
+        "Normal" => size.normal
+        "Large"  => size.large
+        => size.small
+
+// Dashboard display variables
+useMobileMode = dashboardMode == "Mobile"
+dashboardPos = f_getPosition(dashboardPosition)
+fontSize = f_getFontSize(dashboardFontSize)
+fontSizeHeader = dashboardFontSize == "Large" ? size.large : dashboardFontSize == "Normal" ? size.normal : size.normal
+
+// Prepare signal text (used in both modes)
+totalColor = displayScore >= adjBotThreshold ? color.lime : displayScore <= adjTopThreshold ? (displayUptrend ? color.yellow : color.red) : color.gray
+signalText = displayScore >= adjStrongBotThreshold ? "PANIC LOW" : 
+             displayScore >= adjBotThreshold ? "ACCUMULATE" : 
+             displayElevated ? "ELEVATED" :
+             displayScore <= adjStrongTopThreshold ? "REDUCE" : 
+             displayScore <= adjTopThreshold ? "CAUTION" : 
+             "HOLD"
+signalEmoji = displayScore >= adjStrongBotThreshold ? "🚀" : 
+              displayScore >= adjBotThreshold ? "📈" : 
+              displayElevated ? "⭐" :
+              displayScore <= adjStrongTopThreshold ? "⚠️" : 
+              displayScore <= adjTopThreshold ? "⚡" : "⚪"
+
+// Divergence display
+divColor = displayBullishDiv ? color.aqua : displayBearishDiv ? color.fuchsia : color.gray
+thresholdColor = useAdaptive ? color.aqua : color.yellow
+
 if showDashboard and barstate.islast
-    var table dashboard = table.new(position.top_right, 3, 11, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
-    
-    // Header
-    table.cell(dashboard, 0, 0, "Factor", text_color=color.white, text_size=size.small)
-    table.cell(dashboard, 1, 0, "Score", text_color=color.white, text_size=size.small)
-    table.cell(dashboard, 2, 0, "Weight", text_color=color.white, text_size=size.small)
-    
-    // RSI
-    rsiColor = displayRsiS > 0 ? color.lime : displayRsiS < 0 ? color.red : color.gray
-    table.cell(dashboard, 0, 1, "RSI", text_color=color.white, text_size=size.small)
-    table.cell(dashboard, 1, 1, str.tostring(displayRsiS, "#.#"), text_color=rsiColor, text_size=size.small)
-    table.cell(dashboard, 2, 1, "1x", text_color=color.gray, text_size=size.small)
-    
-    // FI (50D) or ADD (Intraday)
-    if intradayMode
-        addColor = displayAddS > 0 ? color.lime : displayAddS < 0 ? color.red : color.gray
-        table.cell(dashboard, 0, 2, "ADD", text_color=color.white, text_size=size.small)
-        table.cell(dashboard, 1, 2, str.tostring(displayAddS, "#.#"), text_color=addColor, text_size=size.small)
-        table.cell(dashboard, 2, 2, "Intraday", text_color=color.aqua, text_size=size.small)
+    if useMobileMode
+        // Mobile Mode: Compact 3-row × 2-col display
+        var table dashboardMobile = table.new(dashboardPos, 2, 3, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
+        
+        // Row 0: Signal Emoji + Signal Text
+        table.cell(dashboardMobile, 0, 0, signalEmoji, text_color=totalColor, text_size=fontSizeHeader)
+        table.cell(dashboardMobile, 1, 0, signalText, text_color=totalColor, text_size=fontSize)
+        
+        // Row 1: Score + Trend
+        scoreStr = str.tostring(displayScore, "#.#") + " " + (displayUptrend ? "↑" : "↓")
+        table.cell(dashboardMobile, 0, 1, "Score", text_color=color.white, text_size=fontSize)
+        table.cell(dashboardMobile, 1, 1, scoreStr, text_color=totalColor, text_size=fontSize)
+        
+        // Row 2: Mode + Divergence
+        divStatus = displayBullishDiv ? "💎↑" : displayBearishDiv ? "💎↓" : "-"
+        table.cell(dashboardMobile, 0, 2, thresholdModeText, text_color=thresholdColor, text_size=fontSize)
+        table.cell(dashboardMobile, 1, 2, divStatus, text_color=divColor, text_size=fontSize)
     else
-        fiColor = displayFiS > 0 ? color.lime : displayFiS < 0 ? color.red : color.gray
-        table.cell(dashboard, 0, 2, "FI(50D)", text_color=color.white, text_size=size.small)
-        table.cell(dashboard, 1, 2, str.tostring(displayFiS, "#.#"), text_color=fiColor, text_size=size.small)
-        table.cell(dashboard, 2, 2, "Bottom", text_color=color.lime, text_size=size.small)
-    
-    // TW (20D)
-    twColor = displayTwS > 0 ? color.lime : displayTwS < 0 ? color.red : color.gray
-    table.cell(dashboard, 0, 3, "TW(20D)", text_color=color.white, text_size=size.small)
-    table.cell(dashboard, 1, 3, str.tostring(displayTwS, "#.#"), text_color=twColor, text_size=size.small)
-    table.cell(dashboard, 2, 3, "Top", text_color=color.red, text_size=size.small)
-    
-    // Volume
-    volColor = displayVolS > 0 ? color.lime : displayVolS < 0 ? color.red : color.gray
-    table.cell(dashboard, 0, 4, "Vol", text_color=color.white, text_size=size.small)
-    table.cell(dashboard, 1, 4, str.tostring(displayVolS, "#.#"), text_color=volColor, text_size=size.small)
-    table.cell(dashboard, 2, 4, "1x", text_color=color.gray, text_size=size.small)
-    
-    // Trend
-    trendText = displayUptrend ? "↑ UP" : "↓ DOWN"
-    trendColor = displayUptrend ? color.lime : color.red
-    table.cell(dashboard, 0, 5, "Trend", text_color=color.white, text_size=size.small)
-    table.cell(dashboard, 1, 5, trendText, text_color=trendColor, text_size=size.small)
-    table.cell(dashboard, 2, 5, str.tostring(trendMALen) + "MA", text_color=color.gray, text_size=size.small)
-    
-    // Threshold Mode
-    thresholdColor = useAdaptive ? color.aqua : color.yellow
-    table.cell(dashboard, 0, 6, "Mode", text_color=color.white, text_size=size.small)
-    table.cell(dashboard, 1, 6, thresholdModeText, text_color=thresholdColor, text_size=size.small)
-    table.cell(dashboard, 2, 6, "Vol=" + str.tostring(vol_fast, "#.#"), text_color=color.gray, text_size=size.small)
-    
-    // Divergence
-    divText = displayBullishDiv ? "BULL 💎" : displayBearishDiv ? "BEAR 💎" : "-"
-    divColor = displayBullishDiv ? color.aqua : displayBearishDiv ? color.fuchsia : color.gray
-    table.cell(dashboard, 0, 7, "Div", text_color=color.white, text_size=size.small)
-    table.cell(dashboard, 1, 7, divText, text_color=divColor, text_size=size.small)
-    table.cell(dashboard, 2, 7, useDivergence ? "ON" : "OFF", text_color=useDivergence ? color.lime : color.gray, text_size=size.small)
-    
-    // Total
-    totalColor = displayScore >= adjBotThreshold ? color.lime : displayScore <= adjTopThreshold ? (displayUptrend ? color.yellow : color.red) : color.gray
-    table.cell(dashboard, 0, 8, "Total", text_color=color.white, text_size=size.normal)
-    table.cell(dashboard, 1, 8, str.tostring(displayScore, "#.#"), text_color=totalColor, text_size=size.normal)
-    signalText = displayScore >= adjStrongBotThreshold ? "PANIC LOW" : 
-                 displayScore >= adjBotThreshold ? "ACCUMULATE" : 
-                 displayElevated ? "ELEVATED" :
-                 displayScore <= adjStrongTopThreshold ? "REDUCE" : 
-                 displayScore <= adjTopThreshold ? "CAUTION" : 
-                 "HOLD"
-    table.cell(dashboard, 2, 8, signalText, text_color=totalColor, text_size=size.small)
-    
-    // Lookback Health (新增)
-    health_text = health_ok ? "✓ OK" : "⚠ Check"
-    health_color = health_ok ? color.lime : color.orange
-    lookback_mode_display = lookbackMode == "Auto" ? "Auto" : lookbackMode == "Fixed 252" ? "252" : "Custom"
-    table.cell(dashboard, 0, 9, "Lookback", text_color=color.white, text_size=size.small)
-    table.cell(dashboard, 1, 9, str.tostring(adaptiveLookback), text_color=color.aqua, text_size=size.small)
-    table.cell(dashboard, 2, 9, health_text, text_color=health_color, text_size=size.small)
-    
-    // Cooldown (动态冷却)
-    cooldown_color = useDynamicCooldown ? color.aqua : color.yellow
-    cooldown_text = useDynamicCooldown ? "Dyn" : "Fix"
-    table.cell(dashboard, 0, 10, "Cooldown", text_color=color.white, text_size=size.small)
-    table.cell(dashboard, 1, 10, str.tostring(cooldownBars) + "b", text_color=cooldown_color, text_size=size.small)
-    table.cell(dashboard, 2, 10, cooldown_text, text_color=cooldown_color, text_size=size.small)
+        // Full Mode: Original 11-row × 3-col display with dynamic font size
+        var table dashboard = table.new(dashboardPos, 3, 11, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
+        
+        // Header
+        table.cell(dashboard, 0, 0, "Factor", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 0, "Score", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 2, 0, "Weight", text_color=color.white, text_size=fontSize)
+        
+        // RSI
+        rsiColor = displayRsiS > 0 ? color.lime : displayRsiS < 0 ? color.red : color.gray
+        table.cell(dashboard, 0, 1, "RSI", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 1, str.tostring(displayRsiS, "#.#"), text_color=rsiColor, text_size=fontSize)
+        table.cell(dashboard, 2, 1, "1x", text_color=color.gray, text_size=fontSize)
+        
+        // FI (50D) or ADD (Intraday)
+        if intradayMode
+            addColor = displayAddS > 0 ? color.lime : displayAddS < 0 ? color.red : color.gray
+            table.cell(dashboard, 0, 2, "ADD", text_color=color.white, text_size=fontSize)
+            table.cell(dashboard, 1, 2, str.tostring(displayAddS, "#.#"), text_color=addColor, text_size=fontSize)
+            table.cell(dashboard, 2, 2, "Intraday", text_color=color.aqua, text_size=fontSize)
+        else
+            fiColor = displayFiS > 0 ? color.lime : displayFiS < 0 ? color.red : color.gray
+            table.cell(dashboard, 0, 2, "FI(50D)", text_color=color.white, text_size=fontSize)
+            table.cell(dashboard, 1, 2, str.tostring(displayFiS, "#.#"), text_color=fiColor, text_size=fontSize)
+            table.cell(dashboard, 2, 2, "Bottom", text_color=color.lime, text_size=fontSize)
+        
+        // TW (20D)
+        twColor = displayTwS > 0 ? color.lime : displayTwS < 0 ? color.red : color.gray
+        table.cell(dashboard, 0, 3, "TW(20D)", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 3, str.tostring(displayTwS, "#.#"), text_color=twColor, text_size=fontSize)
+        table.cell(dashboard, 2, 3, "Top", text_color=color.red, text_size=fontSize)
+        
+        // Volume
+        volColor = displayVolS > 0 ? color.lime : displayVolS < 0 ? color.red : color.gray
+        table.cell(dashboard, 0, 4, "Vol", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 4, str.tostring(displayVolS, "#.#"), text_color=volColor, text_size=fontSize)
+        table.cell(dashboard, 2, 4, "1x", text_color=color.gray, text_size=fontSize)
+        
+        // Trend
+        trendText = displayUptrend ? "↑ UP" : "↓ DOWN"
+        trendColor = displayUptrend ? color.lime : color.red
+        table.cell(dashboard, 0, 5, "Trend", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 5, trendText, text_color=trendColor, text_size=fontSize)
+        table.cell(dashboard, 2, 5, str.tostring(trendMALen) + "MA", text_color=color.gray, text_size=fontSize)
+        
+        // Threshold Mode
+        table.cell(dashboard, 0, 6, "Mode", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 6, thresholdModeText, text_color=thresholdColor, text_size=fontSize)
+        table.cell(dashboard, 2, 6, "Vol=" + str.tostring(vol_fast, "#.#"), text_color=color.gray, text_size=fontSize)
+        
+        // Divergence
+        divText = displayBullishDiv ? "BULL 💎" : displayBearishDiv ? "BEAR 💎" : "-"
+        table.cell(dashboard, 0, 7, "Div", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 7, divText, text_color=divColor, text_size=fontSize)
+        table.cell(dashboard, 2, 7, useDivergence ? "ON" : "OFF", text_color=useDivergence ? color.lime : color.gray, text_size=fontSize)
+        
+        // Total
+        table.cell(dashboard, 0, 8, "Total", text_color=color.white, text_size=fontSizeHeader)
+        table.cell(dashboard, 1, 8, str.tostring(displayScore, "#.#"), text_color=totalColor, text_size=fontSizeHeader)
+        table.cell(dashboard, 2, 8, signalText, text_color=totalColor, text_size=fontSize)
+        
+        // Lookback Health
+        health_text = health_ok ? "✓ OK" : "⚠ Check"
+        health_color = health_ok ? color.lime : color.orange
+        table.cell(dashboard, 0, 9, "Lookback", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 9, str.tostring(adaptiveLookback), text_color=color.aqua, text_size=fontSize)
+        table.cell(dashboard, 2, 9, health_text, text_color=health_color, text_size=fontSize)
+        
+        // Cooldown
+        cooldown_color = useDynamicCooldown ? color.aqua : color.yellow
+        cooldown_text = useDynamicCooldown ? "Dyn" : "Fix"
+        table.cell(dashboard, 0, 10, "Cooldown", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 10, str.tostring(cooldownBars) + "b", text_color=cooldown_color, text_size=fontSize)
+        table.cell(dashboard, 2, 10, cooldown_text, text_color=cooldown_color, text_size=fontSize)
 
 //========================
-// Smart Alert (Unified Alert System)
-// 智能警报：单条消息汇总所有触发的信号，使用上升沿检测避免重复通知
+// Smart Alert V2 (Enhanced from Adaptive RSI Pro)
+// 智能警报：信号等级系统 + K线内去重 + 升级触发 + 增强上下文
 //========================
 grpAlert = "Alerts 警报"
 enable_smart_alert = input.bool(true, "Enable Smart Alert 启用智能警报", group=grpAlert, 
-    tooltip="统一智能警报：单消息汇总所有触发信号\nUnified alerts: aggregate all signals into one message")
+    tooltip="V2智能警报：信号等级+升级触发+K线内去重\nV2 Smart Alert: signal levels + upgrade trigger + dedup")
+min_alert_level_str = input.string("🔥 Lv3 Resonance", "Min Alert Level 最小警报等级", 
+    options=["📈 Lv1 Accumulate", "💎 Lv2 Divergence", "🔥 Lv3 Resonance", "🚀 Lv4 Panic", "🚀🔥 Lv5 Combo"], 
+    group=grpAlert, tooltip="Only receive alerts >= this level")
+min_alert_level = min_alert_level_str == "📈 Lv1 Accumulate" ? 1 : min_alert_level_str == "💎 Lv2 Divergence" ? 2 : min_alert_level_str == "🔥 Lv3 Resonance" ? 3 : min_alert_level_str == "🚀 Lv4 Panic" ? 4 : 5
 
 // 信号条件 (自动检测图表标的)
 autoBotTrig = (isSpy and spyBotTrig) or (isQqq and qqqBotTrig) or (isIwm and iwmBotTrig)
@@ -716,53 +814,84 @@ autoBullishDiv = (isSpy and spyBullishDiv) or (isQqq and qqqBullishDiv) or (isIw
 autoBearishDiv = (isSpy and spyBearishDiv) or (isQqq and qqqBearishDiv) or (isIwm and iwmBearishDiv)
 autoElevated = (isSpy and spyElevated) or (isQqq and qqqElevated) or (isIwm and iwmElevated)
 
+// 信号等级函数 (优先级越高值越大)
+// 5=恐慌+共振 | 4=恐慌低点 | 3=共振 | 2=背离 | 1=低吸/观望
+f_buy_level(_strongBot, _bot, _resonance, _div) =>
+    _strongBot and _resonance ? 5 : _strongBot ? 4 : _resonance ? 3 : _div ? 2 : _bot ? 1 : 0
+
+f_sell_level(_strongTop, _top, _resonance, _div, _elevated) =>
+    _strongTop and _resonance ? 5 : _strongTop ? 4 : _resonance ? 3 : _div ? 2 : (_top or _elevated) ? 1 : 0
+
+// varip: 追踪当前K线内已发送的最高信号等级 (K线收盘时自动重置)
+varip int buy_alert_level_sent = 0
+varip int sell_alert_level_sent = 0
+
+// 新K线开始时重置
+if barstate.isnew
+    buy_alert_level_sent := 0
+    sell_alert_level_sent := 0
+
 if enable_smart_alert
-    // === 买入信号汇总 (Rising Edge Detection) ===
+    // === 买入信号 ===
     has_buy_signal = autoBotTrig or aggBottomEdge or autoBullishDiv
     has_buy_signal_prev = autoBotTrig[1] or aggBottomEdge[1] or autoBullishDiv[1]
+    current_buy_level = f_buy_level(autoStrongBot, autoBotTrig, aggBottomEdge, autoBullishDiv)
 
-    // 只在新信号出现时触发（上升沿）
-    if has_buy_signal and not has_buy_signal_prev
-        msg = str.format("{0}: 🟢 BUY → ", syminfo.ticker)
+    // 触发条件：新信号(上升沿) 且 (未发送过 或 当前等级更高) 且 达到最小等级
+    should_alert_buy = has_buy_signal and not has_buy_signal_prev and current_buy_level > buy_alert_level_sent and current_buy_level >= min_alert_level
+
+    if should_alert_buy
+        msg = str.format("{0}: 🟢 BUY Lv{1} → ", syminfo.ticker, current_buy_level)
         
-        // 添加所有触发的信号标签
-        if autoStrongBot
-            msg := msg + "🚀恐慌低点 "
+        // Signal labels (combo priority)
+        if autoStrongBot and aggBottomEdge
+            msg := msg + "🚀Panic+🔥Resonance "
+        else if autoStrongBot
+            msg := msg + "🚀Panic Low "
+        else if aggBottomEdge
+            msg := msg + "🔥Resonance "
         else if autoBotTrig
-            msg := msg + "📈低吸区 "
-        if aggBottomEdge
-            msg := msg + "🔥共振 "
+            msg := msg + "📈Accumulate "
         if autoBullishDiv
-            msg := msg + "💎背离 "
+            msg := msg + "💎Divergence "
         
-        // 添加上下文信息
+        // Context info
         trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
-        msg := msg + str.format("| Score:{0,number,#.1} {1}", displayScore, trend_ctx)
+        msg := msg + str.format("| Score:{0,number,#.1} {1} Vol:{2,number,#.1} {3}", 
+            displayScore, trend_ctx, vol_fast, thresholdModeText)
         
         alert(msg, alert.freq_once_per_bar)
+        buy_alert_level_sent := current_buy_level
 
-    // === 卖出/风险信号汇总 (Rising Edge Detection) ===
-    has_sell_signal = autoTopTrig or aggTopEdge or autoBearishDiv
-    has_sell_signal_prev = autoTopTrig[1] or aggTopEdge[1] or autoBearishDiv[1]
+    // === 卖出/风险信号 ===
+    has_sell_signal = autoTopTrig or aggTopEdge or autoBearishDiv or autoElevated
+    has_sell_signal_prev = autoTopTrig[1] or aggTopEdge[1] or autoBearishDiv[1] or autoElevated[1]
+    current_sell_level = f_sell_level(autoStrongTop, autoTopTrig, aggTopEdge, autoBearishDiv, autoElevated)
 
-    // 只在新信号出现时触发（上升沿）
-    if has_sell_signal and not has_sell_signal_prev
-        msg = str.format("{0}: 🔴 RISK → ", syminfo.ticker)
+    // 触发条件：新信号(上升沿) 且 (未发送过 或 当前等级更高) 且 达到最小等级
+    should_alert_sell = has_sell_signal and not has_sell_signal_prev and current_sell_level > sell_alert_level_sent and current_sell_level >= min_alert_level
+
+    if should_alert_sell
+        msg = str.format("{0}: 🔴 RISK Lv{1} → ", syminfo.ticker, current_sell_level)
         
-        // 添加所有触发的信号标签
-        if autoStrongTop
-            msg := msg + "⚠️减仓 "
+        // Signal labels (combo priority)
+        if autoStrongTop and aggTopEdge
+            msg := msg + "⚠️Reduce+❄️Resonance "
+        else if autoStrongTop
+            msg := msg + "⚠️Reduce "
+        else if aggTopEdge
+            msg := msg + "❄️Resonance "
         else if autoTopTrig
-            msg := msg + "⚡观望 "
-        if autoElevated and not autoTopTrig
-            msg := msg + "⭐高估 "
-        if aggTopEdge
-            msg := msg + "❄️共振 "
+            msg := msg + "⚡Caution "
+        else if autoElevated
+            msg := msg + "⭐Elevated "
         if autoBearishDiv
-            msg := msg + "💎背离 "
+            msg := msg + "💎Divergence "
         
-        // 添加上下文信息
-        trend_ctx = displayUptrend ? "↑UP(升势中)" : "↓DOWN"
-        msg := msg + str.format("| Score:{0,number,#.1} {1}", displayScore, trend_ctx)
+        // Context info
+        trend_ctx = displayUptrend ? "↑Trend" : "↓DOWN"
+        msg := msg + str.format("| Score:{0,number,#.1} {1} Vol:{2,number,#.1} {3}", 
+            displayScore, trend_ctx, vol_fast, thresholdModeText)
         
         alert(msg, alert.freq_once_per_bar)
+        sell_alert_level_sent := current_sell_level

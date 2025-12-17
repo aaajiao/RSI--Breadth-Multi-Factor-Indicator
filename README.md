@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v6.2
+# RSI+ Breadth Multi-Factor Indicator v6.5
 
 **Adaptive Scoring System for US Market Timing | 美股多因子自适应择时系统**
 
@@ -171,14 +171,30 @@ Divergence Strength = |Price Z - RSI Z|
 |:---------:|:-------:|:-----:|-------------|
 | **RSI Length** | 14 | 2-50 | Standard RSI period<br/>标准RSI周期 |
 
-### 🎯 Signal Thresholds / 信号阈值
+### 🎯 Signal Thresholds / 信号阈值 (%)
 
-| Threshold | Default | Range | Description |
+**v6.4+**: Now uses **percentage-based sensitivity sliders** for easier understanding.
+
+**v6.4+**: 现在使用**百分比灵敏度滑块**，更易理解。
+
+| Parameter | Default | Range | Description |
 |:---------:|:-------:|:-----:|-------------|
-| **Panic Low** | 6 | 3-10 | Strong buy signal<br/>强烈买入阈值 |
-| **Buy Zone** | 4 | 2-8 | Accumulate signal<br/>分批建仓阈值 |
-| **Caution** | -4 | -8~-2 | Take profit signal<br/>止盈信号阈值 |
-| **Reduce** | -6 | -10~-3 | Reduce position signal<br/>减仓信号阈值 |
+| **Buy Sensitivity** | 50% | 25-75% | Buy signal sensitivity<br/>买入灵敏度：越高信号越多 |
+| **Sell Sensitivity** | 45% | 25-75% | Sell signal sensitivity<br/>卖出灵敏度：越高信号越多 |
+
+**How it works | 工作原理**:
+- 📈 **Buy Zone** = Buy Sensitivity × Max Score (8)
+- 🚀 **Panic Low** = (Buy Sensitivity + 25%) × Max Score
+- ⚡ **Caution** = Sell Sensitivity × Max Score (9)
+- ⚠️ **Reduce** = (Sell Sensitivity + 25%) × Max Score
+
+**Default Calculation | 默认计算**:
+| Signal | Formula | Result |
+|:------:|:-------:|:------:|
+| Buy Zone | 8 × 50% | **4** |
+| Panic Low | 8 × 75% | **6** |
+| Caution | -9 × 45% | **-4** |
+| Reduce | -9 × 70% | **-6** |
 
 ### 🔄 Signal Logic / 信号逻辑
 
@@ -226,6 +242,9 @@ Divergence Strength = |Price Z - RSI Z|
 |:-------:|---------|-------------|
 | **Display Mode** | AUTO / SPY / QQQ / IWM / AGG(共振) | AUTO detects chart symbol<br/>AUTO自动检测图表标的; AGG shows multi-market resonance<br/>AGG显示多市场共振 |
 | **Show Dashboard** | ON/OFF | Show/hide info panel<br/>显示/隐藏信息面板 |
+| **Dashboard Mode** | Full / Mobile | Full: 11-row detail view<br/>Mobile: 3-row compact view<br/>Full: 完整11行详情 \| Mobile: 精简3行核心 |
+| **Panel Position** | Top Left / Top Right / Bottom Left / Bottom Right / Middle Left / Middle Right | Dashboard location on chart<br/>面板显示位置 |
+| **Font Size** | Tiny / Small / Normal / Large | Dashboard text size (default: Small)<br/>面板字体大小（默认: Small） |
 
 ---
 
@@ -251,6 +270,18 @@ The dashboard displays real-time scoring and system status:
 **Health Indicators | 健康指标**:
 - ✓ OK: Lookback statistically valid, distribution width ≥12
 - ⚠ Check: May need more historical data or adjustment
+
+### Mobile Mode | 精简模式
+
+A compact 3-row display for mobile devices or minimal screen space:
+
+精简3行显示，适合手机或小屏幕使用：
+
+| Row | Content | Description |
+|:---:|---------|-------------|
+| **Signal** | 🚀/📈/⚪/⚡/⚠️ + Text | Current signal emoji + status<br/>当前信号emoji+状态 |
+| **Score** | Score + ↑/↓ | Total score + trend direction<br/>综合得分+趋势箭头 |
+| **Mode** | Fixed/Adaptive + 💎 | Threshold mode + divergence<br/>阈值模式+背离状态 |
 
 ---
 
@@ -294,67 +325,90 @@ Divergence Threshold: 1.5-1.8
 
 ---
 
-## Smart Alert System | 智能警报系统
+## Smart Alert System V2 | 智能警报系统 V2
 
-The indicator uses a **Unified Smart Alert** system with **Rising Edge Detection** to prevent duplicate notifications.
+The indicator uses an enhanced **V2 Smart Alert** system with **Signal Levels**, **Upgrade Triggers**, and **K-Bar Deduplication**.
 
-指标使用**统一智能警报**系统，配合**上升沿检测**防止重复通知。
+指标使用增强版 **V2 智能警报**系统，包含**信号等级**、**升级触发**和 **K线内去重**。
 
-### How It Works | 工作原理
+### Signal Level System | 信号等级系统
+
+| Level | Emoji | Signal | Description |
+|:-----:|:-----:|--------|-------------|
+| **Lv5** | 🚀🔥 | **Panic+Resonance** | Strongest: Panic low + multi-market resonance |
+| **Lv4** | 🚀 | **Panic Low** | Strong buy: extreme multi-factor score |
+| **Lv3** | 🔥 | **Resonance** | 2+ markets in sync (default trigger level) |
+| **Lv2** | 💎 | **Divergence** | Price/RSI divergence detected |
+| **Lv1** | 📈/⚡ | **Accumulate/Caution** | Basic zone signals |
+
+### Smart Features | 智能特性
 
 ```
-1. Aggregate all triggered signals into ONE message
-   将所有触发的信号汇总到一条消息
+1. Signal Levels: Priority-based alerts (Lv1-5)
+   信号等级：基于优先级的警报（Lv1-5）
    
-2. Rising Edge Detection: Only fires when signal changes from OFF → ON
-   上升沿检测：仅在信号从无到有时触发
+2. Upgrade Trigger: Send new alert when stronger signal appears within same bar
+   升级触发：同一K线内出现更强信号时发送新警报
    
-3. Include context info (Score, Trend) for quick decision making
-   包含上下文信息（得分、趋势）以便快速决策
+3. K-Bar Dedup: varip tracking prevents duplicate alerts per bar
+   K线去重：varip追踪防止每根K线重复警报
+   
+4. Min Level Filter: User configurable via dropdown menu
+   最小等级过滤：用户可通过下拉菜单配置
 ```
 
 ### Alert Message Format | 警报消息格式
 
 **Buy Signals | 买入信号**:
 ```
-SPY: 🟢 BUY → 🚀恐慌低点 🔥共振 💎背离 | Score:6.5 ↑UP
+SPY: 🟢 BUY Lv5 → 🚀Panic+🔥Resonance 💎Divergence | Score:6.5 ↑UP Vol:9.2 Adaptive
 ```
 
 **Sell/Risk Signals | 卖出/风险信号**:
 ```
-QQQ: 🔴 RISK → ⚠️减仓 ❄️共振 | Score:-6.2 ↓DOWN
+QQQ: 🔴 RISK Lv3 → ❄️Resonance | Score:-5.0 ↓DOWN Vol:8.1 Fixed
 ```
 
 ### Signal Tags | 信号标签
 
 | Tag | Signal | Description |
 |:---:|:------:|-------------|
-| 🚀 | **恐慌低点** | Panic Low - Strong buy opportunity |
-| 📈 | **低吸区** | Buy Zone - Accumulation zone |
-| 🔥 | **共振** | Resonance - Multi-market agreement |
-| 💎 | **背离** | Divergence - Price/RSI divergence |
-| ⚠️ | **减仓** | Reduce - High risk, reduce position |
-| ⚡ | **观望** | Caution - Take profit signal |
-| ⭐ | **高估** | Elevated - Overbought but uptrend |
-| ❄️ | **共振** | Resonance Risk - Multi-market risk |
+| 🚀 | **Panic Low** | Strong buy opportunity |
+| 📈 | **Accumulate** | Buy zone - accumulation |
+| 🔥 | **Resonance** | Multi-market buy agreement |
+| 💎 | **Divergence** | Price/RSI divergence |
+| ⚠️ | **Reduce** | High risk, reduce position |
+| ⚡ | **Caution** | Take profit signal |
+| ⭐ | **Elevated** | Overbought but uptrend |
+| ❄️ | **Resonance** | Multi-market risk |
 
 ### Settings | 设置
 
-| Parameter | Default | Description |
-|:---------:|:-------:|-------------|
-| **Enable Smart Alert** | ON | Turn on/off unified alerts<br/>开启/关闭统一警报 |
+| Parameter | Default | Options |
+|:---------:|:-------:|---------|
+| **Enable Smart Alert** | ON | Turn on/off V2 alerts |
+| **Min Alert Level** | 🔥 Lv3 Resonance | Dropdown: Lv1-Lv5 |
+
+**Min Alert Level Options | 最小警报等级选项**:
+- 📈 Lv1 Accumulate
+- 💎 Lv2 Divergence  
+- 🔥 Lv3 Resonance *(default)*
+- 🚀 Lv4 Panic
+- 🚀🔥 Lv5 Combo
 
 ### Benefits | 优势
 
-- ✅ **Single Message**: All signals in one notification, no spam
-- ✅ **Deduplication**: Rising edge detection prevents repeats
-- ✅ **Rich Context**: Includes score and trend for quick action
+- ✅ **Priority Alerts**: Only receive high-importance signals (configurable)
+- ✅ **Upgrade Trigger**: Catch stronger signals even mid-bar
+- ✅ **Deduplication**: No spam, one alert per level per bar
+- ✅ **Rich Context**: Score + Vol + Mode info included
 - ✅ **Auto-Detection**: Matches your chart symbol (SPY/QQQ/IWM)
 
-- ✅ **单条消息**：所有信号汇总到一条通知，无骚扰
-- ✅ **去重**：上升沿检测防止重复
-- ✅ **丰富上下文**：包含得分和趋势，方便快速决策
-- ✅ **自动检测**：自动匹配图表标的（SPY/QQQ/IWM）
+- ✅ **优先级警报**：仅接收高重要性信号（可配置）
+- ✅ **升级触发**：K线内捕捉更强信号
+- ✅ **去重**：每K线每等级一次，无骚扰
+- ✅ **丰富上下文**：包含得分+波动率+模式
+- ✅ **自动检测**：自动匹配图表标的
 
 ---
 
@@ -399,6 +453,50 @@ auto_lookback = clamp(stat_required, 100, 1000)
 ---
 
 ## Changelog | 更新日志
+
+### v6.5 (2025-12-17)
+
+**🖥️ Dashboard Customization | 面板自定义**
+- **Display Mode**: Full (11-row detail) / Mobile (3-row compact)
+  显示模式：Full完整11行 / Mobile精简3行
+- **Panel Position**: 6 position options (Top/Middle/Bottom × Left/Right)
+  面板位置：6个位置选项
+- **Font Size**: Tiny / Small / Normal / Large
+  字体大小：4档可选
+
+---
+
+### v6.4 (2025-12-17)
+
+**🎯 Signal Threshold UX | 信号阈值用户体验**
+- **Percentage Sliders**: Replaced 4 absolute score inputs with 2 intuitive percentage sliders
+  百分比滑块：用2个直观的百分比滑块替代4个绝对分数输入
+- **Buy Sensitivity**: 50% default (controls Buy Zone + Panic Low)
+  买入灵敏度：默认50%（控制低吸区+恐慌低点）
+- **Sell Sensitivity**: 45% default (controls Caution + Reduce)
+  卖出灵敏度：默认45%（控制观望+减仓）
+- **Auto Strong Offset**: +25% fixed offset between weak/strong signals
+  自动强信号偏移：弱/强信号间固定+25%
+- **Enhanced Tooltips**: Bilingual explanations with calculation logic
+  增强提示：双语说明+计算逻辑
+
+---
+
+### v6.3 (2025-12-17)
+
+**🔔 Smart Alert V2 | 智能警报 V2**
+- **Signal Level System**: 5-level priority (Lv1 Accumulate → Lv5 Panic+Resonance)
+  信号等级系统：5级优先级（Lv1 低吸 → Lv5 恐慌+共振）
+- **Upgrade Trigger**: Send new alert when stronger signal appears within same bar
+  升级触发：同一K线内出现更强信号时发送新警报
+- **K-Bar Deduplication**: `varip` tracking prevents duplicate alerts per bar
+  K线去重：varip追踪防止每K线重复警报
+- **Min Level Dropdown**: User selectable trigger level (default: 🔥 Lv3 Resonance)
+  最小等级下拉框：用户可选触发等级（默认：🔥 Lv3 共振）
+- **English Labels**: Alert messages now use emoji + concise English
+  英文标签：警报消息使用emoji+简洁英文
+
+---
 
 ### v6.2 (2025-12-17)
 
@@ -472,7 +570,7 @@ This indicator is for educational and research purposes only. Past performance d
 
 ---
 
-**Version**: 6.2  
+**Version**: 6.5  
 **Pine Script**: v6  
 **Last Updated**: 2025-12-17
 
