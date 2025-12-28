@@ -774,9 +774,7 @@ displayBullishDiv = showSpy ? spyBullishDiv : showQqq ? qqqBullishDiv : showIwm 
 displayBearishDiv = showSpy ? spyBearishDiv : showQqq ? qqqBearishDiv : showIwm ? iwmBearishDiv : (spyBearishDiv or qqqBearishDiv or iwmBearishDiv)
 
 // v7.0: Display signal quality and drawdown
-displayBuyQuality = showSpy ? spyBuyQuality : showQqq ? qqqBuyQuality : showIwm ? iwmBuyQuality :
-    (spyPosFactor >= qqqPosFactor and spyPosFactor >= iwmPosFactor ? spyBuyQuality :
-     qqqPosFactor >= iwmPosFactor ? qqqBuyQuality : iwmBuyQuality)
+displayBuyQuality = showSpy ? spyBuyQuality : showQqq ? qqqBuyQuality : showIwm ? iwmBuyQuality : (spyPosFactor >= qqqPosFactor and spyPosFactor >= iwmPosFactor ? spyBuyQuality : qqqPosFactor >= iwmPosFactor ? qqqBuyQuality : iwmBuyQuality)
 displayDrawdown = showSpy ? spyDrawdown : showQqq ? qqqDrawdown : showIwm ? iwmDrawdown : (spyDrawdown + qqqDrawdown + iwmDrawdown) / 3
 displayDrawdownBonus = showSpy ? spyDrawdownBonus : showQqq ? qqqDrawdownBonus : showIwm ? iwmDrawdownBonus : (spyDrawdownBonus + qqqDrawdownBonus + iwmDrawdownBonus) / 3
 displayPosFactor = showSpy ? spyPosFactor : showQqq ? qqqPosFactor : showIwm ? iwmPosFactor : int((spyPosFactor + qqqPosFactor + iwmPosFactor) / 3)
