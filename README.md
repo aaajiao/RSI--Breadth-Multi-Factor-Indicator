@@ -339,11 +339,16 @@ The dashboard displays real-time scoring and system status:
 | **Trend** | ↑UP/↓DOWN | Current trend direction<br/>当前趋势方向 |
 | **Mode** | Fixed/Adaptive | Current threshold mode | Vol value<br/>当前阈值模式 | 波动率 |
 | **Div** | BULL💎/BEAR💎/- | Divergence status | ON/OFF<br/>背离状态 | 开关 |
-| **Total** | Score, Signal | Composite score and signal type<br/>综合得分和信号类型 |
 | **Lookback** | Period, Health | Adaptive lookback | Health check (✓OK/⚠Check)<br/>自适应回溯期 | 健康检查 |
 | **Cooldown** | Bars, Dyn/Fix | Dynamic or fixed cooldown mode<br/>动态或固定冷却模式 |
 | **Quality** | A/B/C Grade, Factors | v7.0: Signal quality grade and aligned factor count<br/>v7.0: 信号质量等级和同向因子数 |
 | **Drawdown** | DD%, Bonus | v7.0: Current drawdown from 252-day high and bonus score<br/>v7.0: 当前回撤百分比和加分 |
+| **Total** | Score🔥+n, Signal | v7.0: Composite score with all bonuses (last row)<br/>v7.0: 含所有加分的综合得分（最后一行）|
+
+**Total Score Formula | 综合得分公式**:
+```
+Total = RSI + FI + TW + Vol + Drawdown Bonus + Resonance Bonus (AGG mode)
+```
 
 **Health Indicators | 健康指标**:
 - ✓ OK: Lookback statistically valid, distribution width ≥12
