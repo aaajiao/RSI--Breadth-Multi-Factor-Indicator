@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v6.5", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.0", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -24,6 +24,15 @@ indicator("RSI+Breadth Multi-Factor v6.5", overlay=true, max_labels_count=500, m
 // RESONANCE 共振信号:
 // 🔥 Resonance Buy  共振买入 - Multiple markets in buy zone 多市场同时低吸
 // ❄️ Resonance Risk 共振风险 - Multiple markets in risk zone 多市场同时高估
+//
+// v7.0 ENHANCEMENTS 增强功能:
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │ Feature         │ Effect                │ 效果说明                        │
+// ├───────────────────────────────────────────────────────────────────────────┤
+// │ Quality Filter  │ A/B grade only        │ 仅触发A/B级(2+因子同向)信号     │
+// │ Drawdown Bonus  │ +1/+2/+3 at 5/10/20%  │ 回撤5/10/20%时加分+1/+2/+3     │
+// │ Divergence Assist│ Edge signal boost    │ 边缘信号(差1-2分)可被背离触发   │
+// └───────────────────────────────────────────────────────────────────────────┘
 //==============================================================================
 
 //========================
@@ -112,6 +121,17 @@ confirmBars = input.int(3, "Resonance Window 共振窗口", minval=0, group=grp3
 minAgree = input.int(2, "Min Markets 最小市场数", minval=1, maxval=3, group=grp3, tooltip="触发共振所需市场数 Markets needed for resonance")
 
 //========================
+// v7.0 Optimizations (胜率优化)
+//========================
+grpOptimize = "v7.0 Optimizations 胜率优化"
+useSignalQuality = input.bool(true, "Signal Quality Filter 信号质量过滤", group=grpOptimize,
+    tooltip="仅触发A/B级信号(多因子同向)\nOnly trigger A/B grade signals (multi-factor aligned)\nA级=3+因子同向 | B级=2因子同向 | C级=过滤")
+useDrawdownBonus = input.bool(true, "Drawdown Bonus 回撤加分", group=grpOptimize,
+    tooltip="指数回撤时增加买入评分\nAdd bonus score when index is in drawdown\n>5%=+1 | >10%=+2 | >20%=+3")
+useDivergenceAssist = input.bool(true, "Divergence Assist 背离助推", group=grpOptimize,
+    tooltip="背离可助推边缘信号(差1-2分)\nDivergence can boost edge signals\n评分接近阈值时，背离可触发信号")
+
+//========================
 // Divergence Settings (背离设置)
 //========================
 grpDiv = "Divergence 背离"
@@ -162,9 +182,12 @@ dashboardPosition = input.string("Top Right", "Panel Position 面板位置",
              "Middle Left", "Middle Right"], group=grp6,
     tooltip="面板显示位置 Dashboard location on chart")
 
-dashboardFontSize = input.string("Small", "Font Size 字体大小", 
+dashboardFontSize = input.string("Small", "Font Size 字体大小",
     options=["Tiny", "Small", "Normal", "Large"], group=grp6,
     tooltip="Tiny: 最小 | Small: 默认 | Normal: 中等 | Large: 最大")
+
+showSignalZone = input.bool(true, "Show Signal Zone 显示信号区间", group=grp6,
+    tooltip="信号触发后背景高亮直到回归HOLD\nHighlight background from signal trigger until back to HOLD\n绿色=买入区间 | 红色=卖出区间")
 
 //========================
 // Mode presets
@@ -213,6 +236,87 @@ f_dynamicCooldown(_baseCooldown, _volFast, _volThreshold) =>
                        volRatio < 0.8 ? int(_baseCooldown * 1.5) :
                        _baseCooldown
     math.max(3, adjustedCooldown)  // 最小3根K线
+
+//========================
+// v7.0 Optimization Functions (胜率优化函数)
+//========================
+
+// Signal Quality Assessment (信号质量评估)
+// A级: 3+因子同向 = 高质量 | B级: 2因子同向 = 标准 | C级: <2因子 = 过滤
+f_signalQuality(_rsiS, _fiS, _twS, _volS, _addS, _intraday) =>
+    positiveFactors = 0
+    negativeFactors = 0
+
+    // 计算正向因子数量 (买入方向)
+    positiveFactors := (_rsiS > 0 ? 1 : 0) + (_volS > 0 ? 1 : 0)
+    if _intraday
+        positiveFactors := positiveFactors + (_addS > 0 ? 1 : 0)
+    else
+        positiveFactors := positiveFactors + (_fiS > 0 ? 1 : 0) + (_twS > 0 ? 1 : 0)
+
+    // 计算负向因子数量 (卖出方向)
+    negativeFactors := (_rsiS < 0 ? 1 : 0) + (_volS < 0 ? 1 : 0)
+    if _intraday
+        negativeFactors := negativeFactors + (_addS < 0 ? 1 : 0)
+    else
+        negativeFactors := negativeFactors + (_fiS < 0 ? 1 : 0) + (_twS < 0 ? 1 : 0)
+
+    // 信号质量等级
+    maxFactors = _intraday ? 3 : 4
+    buyQuality = positiveFactors >= 3 ? "A" : positiveFactors >= 2 ? "B" : "C"
+    sellQuality = negativeFactors >= 3 ? "A" : negativeFactors >= 2 ? "B" : "C"
+
+    [buyQuality, sellQuality, positiveFactors, negativeFactors]
+
+// Drawdown Bonus (回撤加分 - 针对指数长期向上特性)
+// 利用"下跌=买入机会"的指数特性
+f_drawdownBonus(_close, _high252) =>
+    drawdown = _high252 > 0 ? (_high252 - _close) / _high252 * 100 : 0.0
+
+    bonus = 0.0
+    if drawdown >= 20      // 技术性熊市
+        bonus := 3.0
+    else if drawdown >= 10 // 显著回调
+        bonus := 2.0
+    else if drawdown >= 5  // 小幅回撤
+        bonus := 1.0
+    [bonus, drawdown]
+
+// Divergence Assisted Signal (背离助推机制)
+// 当评分接近阈值(差1-2分)但未达到时，背离可以助推触发
+f_divergenceAssisted(_score, _threshold, _hasDivergence, _assistEnabled) =>
+    if not _assistEnabled
+        _score >= _threshold
+    else
+        // 评分达阈值 → 正常触发
+        if _score >= _threshold
+            true
+        // 评分接近阈值(差1-2分) + 有背离 → 助推触发
+        else if _score >= (_threshold - 2) and _hasDivergence
+            true
+        else
+            false
+
+// Tiered Resonance System (分级共振系统)
+// 同步共振(同一K线) > 窗口共振 > 单市场
+f_resonanceStrength(_spyTrig, _qqqTrig, _iwmTrig, _spyRecent, _qqqRecent, _iwmRecent) =>
+    // 同步共振: 同一根K线触发 (最高质量)
+    syncCount = (_spyTrig ? 1 : 0) + (_qqqTrig ? 1 : 0) + (_iwmTrig ? 1 : 0)
+    syncResonance = syncCount >= 2
+
+    // 窗口共振: 窗口期内触发
+    windowCount = (_spyRecent ? 1 : 0) + (_qqqRecent ? 1 : 0) + (_iwmRecent ? 1 : 0)
+
+    // 共振强度: 3=完美共振(3市场同步), 2.5=双同步, 2=窗口共振, 1=单市场
+    strength = syncCount >= 3 ? 3.0 :
+               syncResonance ? 2.5 :
+               windowCount >= 2 ? 2.0 :
+               windowCount >= 1 ? 1.0 : 0.0
+
+    // 共振加分
+    bonus = strength >= 2.5 ? 1.0 : strength >= 2 ? 0.5 : 0.0
+
+    [strength, bonus, syncResonance, syncCount, windowCount]
 
 //========================
 // Adaptive Threshold Calculation (自适应阈值计算)
@@ -472,9 +576,40 @@ health_ok = health_sample_coverage and health_stat_valid and health_distribution
 //========================
 // Calculate Scores per Market
 //========================
-[spyScore, spyRsiS, spyFiS, spyTwS, spyVolS, spyAddS] = f_totalScore(spyRSI, s5tw, s5fi, uvol, dvol, addValue, intradayMode, spyOS1, spyOS2, spyOB1, spyOB2)
-[qqqScore, qqqRsiS, qqqFiS, qqqTwS, qqqVolS, qqqAddS] = f_totalScore(qqqRSI, nctw, ncfi, uvolq, dvolq, addValue, intradayMode, qqqOS1, qqqOS2, qqqOB1, qqqOB2)
-[iwmScore, iwmRsiS, iwmFiS, iwmTwS, iwmVolS, iwmAddS] = f_totalScore(iwmRSI, r2tw, r2fi, uvol, dvol, addValue, intradayMode, iwmOS1, iwmOS2, iwmOB1, iwmOB2)
+[spyScoreRaw, spyRsiS, spyFiS, spyTwS, spyVolS, spyAddS] = f_totalScore(spyRSI, s5tw, s5fi, uvol, dvol, addValue, intradayMode, spyOS1, spyOS2, spyOB1, spyOB2)
+[qqqScoreRaw, qqqRsiS, qqqFiS, qqqTwS, qqqVolS, qqqAddS] = f_totalScore(qqqRSI, nctw, ncfi, uvolq, dvolq, addValue, intradayMode, qqqOS1, qqqOS2, qqqOB1, qqqOB2)
+[iwmScoreRaw, iwmRsiS, iwmFiS, iwmTwS, iwmVolS, iwmAddS] = f_totalScore(iwmRSI, r2tw, r2fi, uvol, dvol, addValue, intradayMode, iwmOS1, iwmOS2, iwmOB1, iwmOB2)
+
+//========================
+// v7.0: Apply Drawdown Bonus (回撤加分)
+//========================
+spyHigh252 = ta.highest(spyC, 252)
+qqqHigh252 = ta.highest(qqqC, 252)
+iwmHigh252 = ta.highest(iwmC, 252)
+
+[spyDrawdownBonus, spyDrawdown] = f_drawdownBonus(spyC, spyHigh252)
+[qqqDrawdownBonus, qqqDrawdown] = f_drawdownBonus(qqqC, qqqHigh252)
+[iwmDrawdownBonus, iwmDrawdown] = f_drawdownBonus(iwmC, iwmHigh252)
+
+// 应用回撤加分 (仅限买入方向)
+spyScore = useDrawdownBonus ? spyScoreRaw + spyDrawdownBonus : spyScoreRaw
+qqqScore = useDrawdownBonus ? qqqScoreRaw + qqqDrawdownBonus : qqqScoreRaw
+iwmScore = useDrawdownBonus ? iwmScoreRaw + iwmDrawdownBonus : iwmScoreRaw
+
+//========================
+// v7.0: Signal Quality Assessment (信号质量评估)
+//========================
+[spyBuyQuality, spySellQuality, spyPosFactor, spyNegFactor] = f_signalQuality(spyRsiS, spyFiS, spyTwS, spyVolS, spyAddS, intradayMode)
+[qqqBuyQuality, qqqSellQuality, qqqPosFactor, qqqNegFactor] = f_signalQuality(qqqRsiS, qqqFiS, qqqTwS, qqqVolS, qqqAddS, intradayMode)
+[iwmBuyQuality, iwmSellQuality, iwmPosFactor, iwmNegFactor] = f_signalQuality(iwmRsiS, iwmFiS, iwmTwS, iwmVolS, iwmAddS, intradayMode)
+
+// 信号质量过滤: 仅A/B级信号通过
+spyBuyQualityOK = not useSignalQuality or spyBuyQuality != "C"
+qqqBuyQualityOK = not useSignalQuality or qqqBuyQuality != "C"
+iwmBuyQualityOK = not useSignalQuality or iwmBuyQuality != "C"
+spySellQualityOK = not useSignalQuality or spySellQuality != "C"
+qqqSellQualityOK = not useSignalQuality or qqqSellQuality != "C"
+iwmSellQualityOK = not useSignalQuality or iwmSellQuality != "C"
 
 //========================
 // Divergence Calculation
@@ -535,9 +670,40 @@ spyUptrend = spyC > spyTrendMA
 qqqUptrend = qqqC > qqqTrendMA
 iwmUptrend = iwmC > iwmTrendMA
 
-[spyStrongBot, spyBot, spyTop, spyStrongTop, spyElevated, spyBotRaw, spyTopRaw] = f_generateSignals(spyScore, spyUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
-[qqqStrongBot, qqqBot, qqqTop, qqqStrongTop, qqqElevated, qqqBotRaw, qqqTopRaw] = f_generateSignals(qqqScore, qqqUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
-[iwmStrongBot, iwmBot, iwmTop, iwmStrongTop, iwmElevated, iwmBotRaw, iwmTopRaw] = f_generateSignals(iwmScore, iwmUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+// 原始信号生成
+[spyStrongBotRaw, spyBotOnly, spyTopOnly, spyStrongTopRaw, spyElevatedRaw, spyBotRawBase, spyTopRawBase] = f_generateSignals(spyScore, spyUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+[qqqStrongBotRaw, qqqBotOnly, qqqTopOnly, qqqStrongTopRaw, qqqElevatedRaw, qqqBotRawBase, qqqTopRawBase] = f_generateSignals(qqqScore, qqqUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+[iwmStrongBotRaw, iwmBotOnly, iwmTopOnly, iwmStrongTopRaw, iwmElevatedRaw, iwmBotRawBase, iwmTopRawBase] = f_generateSignals(iwmScore, iwmUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+
+// v7.0: 应用背离助推 (边缘信号可被背离触发)
+spyBotAssisted = f_divergenceAssisted(spyScore, adjBotThreshold, spyBullishDivRaw, useDivergenceAssist)
+qqqBotAssisted = f_divergenceAssisted(qqqScore, adjBotThreshold, qqqBullishDivRaw, useDivergenceAssist)
+iwmBotAssisted = f_divergenceAssisted(iwmScore, adjBotThreshold, iwmBullishDivRaw, useDivergenceAssist)
+
+// v7.0: 应用信号质量过滤 (确保信号互斥)
+spyStrongBot = spyStrongBotRaw and spyBuyQualityOK
+spyBot = (spyBotOnly or (spyBotAssisted and not spyBotOnly)) and spyBuyQualityOK and not spyStrongBot
+spyTop = spyTopOnly and spySellQualityOK
+spyStrongTop = spyStrongTopRaw and spySellQualityOK
+spyElevated = spyElevatedRaw
+spyBotRaw = (spyStrongBot or spyBot)
+spyTopRaw = (spyStrongTop or spyTop)
+
+qqqStrongBot = qqqStrongBotRaw and qqqBuyQualityOK
+qqqBot = (qqqBotOnly or (qqqBotAssisted and not qqqBotOnly)) and qqqBuyQualityOK and not qqqStrongBot
+qqqTop = qqqTopOnly and qqqSellQualityOK
+qqqStrongTop = qqqStrongTopRaw and qqqSellQualityOK
+qqqElevated = qqqElevatedRaw
+qqqBotRaw = (qqqStrongBot or qqqBot)
+qqqTopRaw = (qqqStrongTop or qqqTop)
+
+iwmStrongBot = iwmStrongBotRaw and iwmBuyQualityOK
+iwmBot = (iwmBotOnly or (iwmBotAssisted and not iwmBotOnly)) and iwmBuyQualityOK and not iwmStrongBot
+iwmTop = iwmTopOnly and iwmSellQualityOK
+iwmStrongTop = iwmStrongTopRaw and iwmSellQualityOK
+iwmElevated = iwmElevatedRaw
+iwmBotRaw = (iwmStrongBot or iwmBot)
+iwmTopRaw = (iwmStrongTop or iwmTop)
 
 //========================
 // Cooldown state
@@ -590,6 +756,12 @@ aggBottomEdge = aggBottom and not aggBottom[1]
 aggTopEdge    = aggTop and not aggTop[1]
 
 //========================
+// v7.0: Tiered Resonance System (分级共振)
+//========================
+[botResonanceStrength, botResonanceBonus, botSyncResonance, botSyncCount, botWindowCount] = f_resonanceStrength(spyBotTrig, qqqBotTrig, iwmBotTrig, spyBotRecent, qqqBotRecent, iwmBotRecent)
+[topResonanceStrength, topResonanceBonus, topSyncResonance, topSyncCount, topWindowCount] = f_resonanceStrength(spyTopTrig, qqqTopTrig, iwmTopTrig, spyTopRecent, qqqTopRecent, iwmTopRecent)
+
+//========================
 // Plot selection
 //========================
 tickerName = str.upper(syminfo.ticker)
@@ -603,7 +775,10 @@ showQqq = modePlot == "QQQ"
 showIwm = modePlot == "IWM"
 showAgg = modePlot == "AGG(共振)"
 
-displayScore = showSpy ? spyScore : showQqq ? qqqScore : showIwm ? iwmScore : (spyScore + qqqScore + iwmScore) / 3
+// v7.0: Add resonance bonus to display score
+displayResonanceBonus = showAgg ? botResonanceBonus : 0.0
+displayScoreBase = showSpy ? spyScore : showQqq ? qqqScore : showIwm ? iwmScore : (spyScore + qqqScore + iwmScore) / 3
+displayScore = displayScoreBase + displayResonanceBonus
 displayRsiS = showSpy ? spyRsiS : showQqq ? qqqRsiS : showIwm ? iwmRsiS : (spyRsiS + qqqRsiS + iwmRsiS) / 3
 displayFiS = showSpy ? spyFiS : showQqq ? qqqFiS : showIwm ? iwmFiS : (spyFiS + qqqFiS + iwmFiS) / 3
 displayTwS = showSpy ? spyTwS : showQqq ? qqqTwS : showIwm ? iwmTwS : (spyTwS + qqqTwS + iwmTwS) / 3
@@ -612,6 +787,43 @@ displayAddS = showSpy ? spyAddS : showQqq ? qqqAddS : showIwm ? iwmAddS : (spyAd
 
 displayBullishDiv = showSpy ? spyBullishDiv : showQqq ? qqqBullishDiv : showIwm ? iwmBullishDiv : (spyBullishDiv or qqqBullishDiv or iwmBullishDiv)
 displayBearishDiv = showSpy ? spyBearishDiv : showQqq ? qqqBearishDiv : showIwm ? iwmBearishDiv : (spyBearishDiv or qqqBearishDiv or iwmBearishDiv)
+
+// v7.0: Display signal quality and drawdown
+displayBuyQuality = showSpy ? spyBuyQuality : showQqq ? qqqBuyQuality : showIwm ? iwmBuyQuality : (spyPosFactor >= qqqPosFactor and spyPosFactor >= iwmPosFactor ? spyBuyQuality : qqqPosFactor >= iwmPosFactor ? qqqBuyQuality : iwmBuyQuality)
+displayDrawdown = showSpy ? spyDrawdown : showQqq ? qqqDrawdown : showIwm ? iwmDrawdown : (spyDrawdown + qqqDrawdown + iwmDrawdown) / 3
+displayDrawdownBonus = showSpy ? spyDrawdownBonus : showQqq ? qqqDrawdownBonus : showIwm ? iwmDrawdownBonus : (spyDrawdownBonus + qqqDrawdownBonus + iwmDrawdownBonus) / 3
+displayPosFactor = showSpy ? spyPosFactor : showQqq ? qqqPosFactor : showIwm ? iwmPosFactor : int((spyPosFactor + qqqPosFactor + iwmPosFactor) / 3)
+
+//========================
+// Signal Zone State (v7.0: 信号区间状态跟踪)
+//========================
+// 信号触发条件 (使用当前显示模式的信号)
+displayBotTrig = showSpy ? spyBotTrig : showQqq ? qqqBotTrig : showIwm ? iwmBotTrig : aggBottomEdge
+displayTopTrig = showSpy ? spyTopTrig : showQqq ? qqqTopTrig : showIwm ? iwmTopTrig : aggTopEdge
+displayBotSignal = showSpy ? (spyStrongBot or spyBot) : showQqq ? (qqqStrongBot or qqqBot) : showIwm ? (iwmStrongBot or iwmBot) : aggBottom
+displayTopSignal = showSpy ? (spyStrongTop or spyTop) : showQqq ? (qqqStrongTop or qqqTop) : showIwm ? (iwmStrongTop or iwmTop) : aggTop
+
+// HOLD 区间: 评分在买入和卖出阈值之间
+isHoldZone = displayScore < adjBotThreshold and displayScore > adjTopThreshold
+
+// 使用 var 跟踪当前区间状态 (0=无, 1=买入区间, -1=卖出区间)
+var int signalZoneState = 0
+
+// 状态转换逻辑
+if displayBotTrig and displayBotSignal
+    signalZoneState := 1  // 进入买入区间
+else if displayTopTrig and displayTopSignal
+    signalZoneState := -1  // 进入卖出区间
+else if isHoldZone
+    signalZoneState := 0  // 回到 HOLD，结束区间
+
+// 背景颜色
+buyZoneColor = color.new(color.lime, 90)  // 绿色半透明
+sellZoneColor = color.new(color.red, 90)  // 红色半透明
+
+// 绘制背景
+bgcolor(showSignalZone and signalZoneState == 1 ? buyZoneColor : na, title="Buy Zone Background")
+bgcolor(showSignalZone and signalZoneState == -1 ? sellZoneColor : na, title="Sell Zone Background")
 
 //========================
 // Plot shapes
@@ -683,11 +895,11 @@ fontSizeHeader = dashboardFontSize == "Large" ? size.large : dashboardFontSize =
 
 // Prepare signal text (used in both modes)
 totalColor = displayScore >= adjBotThreshold ? color.lime : displayScore <= adjTopThreshold ? (displayUptrend ? color.yellow : color.red) : color.gray
-signalText = displayScore >= adjStrongBotThreshold ? "PANIC LOW" : 
-             displayScore >= adjBotThreshold ? "ACCUMULATE" : 
+signalText = displayScore >= adjStrongBotThreshold ? "PANIC LOW" :
+             displayScore >= adjBotThreshold ? "BUY ZONE" :
              displayElevated ? "ELEVATED" :
-             displayScore <= adjStrongTopThreshold ? "REDUCE" : 
-             displayScore <= adjTopThreshold ? "CAUTION" : 
+             displayScore <= adjStrongTopThreshold ? "REDUCE" :
+             displayScore <= adjTopThreshold ? "CAUTION" :
              "HOLD"
 signalEmoji = displayScore >= adjStrongBotThreshold ? "🚀" : 
               displayScore >= adjBotThreshold ? "📈" : 
@@ -701,25 +913,33 @@ thresholdColor = useAdaptive ? color.aqua : color.yellow
 
 if showDashboard and barstate.islast
     if useMobileMode
-        // Mobile Mode: Compact 3-row × 2-col display
-        var table dashboardMobile = table.new(dashboardPos, 2, 3, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
-        
+        // Mobile Mode: Compact 4-row × 2-col display (v7.0 adds Quality row)
+        var table dashboardMobile = table.new(dashboardPos, 2, 4, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
+
         // Row 0: Signal Emoji + Signal Text
         table.cell(dashboardMobile, 0, 0, signalEmoji, text_color=totalColor, text_size=fontSizeHeader)
         table.cell(dashboardMobile, 1, 0, signalText, text_color=totalColor, text_size=fontSize)
-        
+
         // Row 1: Score + Trend
         scoreStr = str.tostring(displayScore, "#.#") + " " + (displayUptrend ? "↑" : "↓")
         table.cell(dashboardMobile, 0, 1, "Score", text_color=color.white, text_size=fontSize)
         table.cell(dashboardMobile, 1, 1, scoreStr, text_color=totalColor, text_size=fontSize)
-        
-        // Row 2: Mode + Divergence
+
+        // Row 2: Quality + Drawdown (v7.0)
+        qualityColor = displayBuyQuality == "A" ? color.lime : displayBuyQuality == "B" ? color.yellow : color.gray
+        qualityStr = displayBuyQuality + " (" + str.tostring(displayPosFactor) + "F)"
+        ddStr = displayDrawdown >= 5 ? str.tostring(displayDrawdown, "#.#") + "%" : "-"
+        ddColor = displayDrawdown >= 10 ? color.lime : displayDrawdown >= 5 ? color.yellow : color.gray
+        table.cell(dashboardMobile, 0, 2, qualityStr, text_color=qualityColor, text_size=fontSize)
+        table.cell(dashboardMobile, 1, 2, "DD:" + ddStr, text_color=ddColor, text_size=fontSize)
+
+        // Row 3: Mode + Divergence
         divStatus = displayBullishDiv ? "💎↑" : displayBearishDiv ? "💎↓" : "-"
-        table.cell(dashboardMobile, 0, 2, thresholdModeText, text_color=thresholdColor, text_size=fontSize)
-        table.cell(dashboardMobile, 1, 2, divStatus, text_color=divColor, text_size=fontSize)
+        table.cell(dashboardMobile, 0, 3, thresholdModeText, text_color=thresholdColor, text_size=fontSize)
+        table.cell(dashboardMobile, 1, 3, divStatus, text_color=divColor, text_size=fontSize)
     else
-        // Full Mode: Original 11-row × 3-col display with dynamic font size
-        var table dashboard = table.new(dashboardPos, 3, 11, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
+        // Full Mode: 13-row × 3-col display (v7.0 adds Quality + Drawdown rows)
+        var table dashboard = table.new(dashboardPos, 3, 13, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
         
         // Header
         table.cell(dashboard, 0, 0, "Factor", text_color=color.white, text_size=fontSize)
@@ -773,25 +993,43 @@ if showDashboard and barstate.islast
         table.cell(dashboard, 0, 7, "Div", text_color=color.white, text_size=fontSize)
         table.cell(dashboard, 1, 7, divText, text_color=divColor, text_size=fontSize)
         table.cell(dashboard, 2, 7, useDivergence ? "ON" : "OFF", text_color=useDivergence ? color.lime : color.gray, text_size=fontSize)
-        
-        // Total
-        table.cell(dashboard, 0, 8, "Total", text_color=color.white, text_size=fontSizeHeader)
-        table.cell(dashboard, 1, 8, str.tostring(displayScore, "#.#"), text_color=totalColor, text_size=fontSizeHeader)
-        table.cell(dashboard, 2, 8, signalText, text_color=totalColor, text_size=fontSize)
-        
+
         // Lookback Health
         health_text = health_ok ? "✓ OK" : "⚠ Check"
         health_color = health_ok ? color.lime : color.orange
-        table.cell(dashboard, 0, 9, "Lookback", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 9, str.tostring(adaptiveLookback), text_color=color.aqua, text_size=fontSize)
-        table.cell(dashboard, 2, 9, health_text, text_color=health_color, text_size=fontSize)
-        
+        table.cell(dashboard, 0, 8, "Lookback", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 8, str.tostring(adaptiveLookback), text_color=color.aqua, text_size=fontSize)
+        table.cell(dashboard, 2, 8, health_text, text_color=health_color, text_size=fontSize)
+
         // Cooldown
         cooldown_color = useDynamicCooldown ? color.aqua : color.yellow
         cooldown_text = useDynamicCooldown ? "Dyn" : "Fix"
-        table.cell(dashboard, 0, 10, "Cooldown", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 10, str.tostring(cooldownBars) + "b", text_color=cooldown_color, text_size=fontSize)
-        table.cell(dashboard, 2, 10, cooldown_text, text_color=cooldown_color, text_size=fontSize)
+        table.cell(dashboard, 0, 9, "Cooldown", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 9, str.tostring(cooldownBars) + "b", text_color=cooldown_color, text_size=fontSize)
+        table.cell(dashboard, 2, 9, cooldown_text, text_color=cooldown_color, text_size=fontSize)
+
+        // v7.0: Signal Quality
+        qualityColor = displayBuyQuality == "A" ? color.lime : displayBuyQuality == "B" ? color.yellow : color.gray
+        qualityText = displayBuyQuality + " Grade"
+        factorText = str.tostring(displayPosFactor) + "/4 Factors"
+        table.cell(dashboard, 0, 10, "Quality", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 10, qualityText, text_color=qualityColor, text_size=fontSize)
+        table.cell(dashboard, 2, 10, factorText, text_color=qualityColor, text_size=fontSize)
+
+        // v7.0: Drawdown Bonus
+        ddColor = displayDrawdown >= 10 ? color.lime : displayDrawdown >= 5 ? color.yellow : color.gray
+        ddText = displayDrawdown >= 1 ? str.tostring(displayDrawdown, "#.#") + "%" : "-"
+        bonusText = displayDrawdownBonus > 0 ? "+" + str.tostring(displayDrawdownBonus, "#.#") : "-"
+        table.cell(dashboard, 0, 11, "Drawdown", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 11, ddText, text_color=ddColor, text_size=fontSize)
+        table.cell(dashboard, 2, 11, bonusText, text_color=ddColor, text_size=fontSize)
+
+        // Total (v7.0: includes drawdown + resonance bonus) - LAST ROW
+        resonanceText = displayResonanceBonus > 0 ? "🔥+" + str.tostring(displayResonanceBonus, "#.#") : ""
+        totalText = str.tostring(displayScore, "#.#") + resonanceText
+        table.cell(dashboard, 0, 12, "Total", text_color=color.white, text_size=fontSizeHeader)
+        table.cell(dashboard, 1, 12, totalText, text_color=totalColor, text_size=fontSizeHeader)
+        table.cell(dashboard, 2, 12, signalText, text_color=totalColor, text_size=fontSize)
 
 //========================
 // Smart Alert V2 (Enhanced from Adaptive RSI Pro)
@@ -800,10 +1038,10 @@ if showDashboard and barstate.islast
 grpAlert = "Alerts 警报"
 enable_smart_alert = input.bool(true, "Enable Smart Alert 启用智能警报", group=grpAlert, 
     tooltip="V2智能警报：信号等级+升级触发+K线内去重\nV2 Smart Alert: signal levels + upgrade trigger + dedup")
-min_alert_level_str = input.string("🔥 Lv3 Resonance", "Min Alert Level 最小警报等级", 
-    options=["📈 Lv1 Accumulate", "💎 Lv2 Divergence", "🔥 Lv3 Resonance", "🚀 Lv4 Panic", "🚀🔥 Lv5 Combo"], 
+min_alert_level_str = input.string("🔥 Lv3 Resonance", "Min Alert Level 最小警报等级",
+    options=["📈 Lv1 Buy Zone", "💎 Lv2 Divergence", "🔥 Lv3 Resonance", "🚀 Lv4 Panic", "🚀🔥 Lv5 Combo"],
     group=grpAlert, tooltip="Only receive alerts >= this level")
-min_alert_level = min_alert_level_str == "📈 Lv1 Accumulate" ? 1 : min_alert_level_str == "💎 Lv2 Divergence" ? 2 : min_alert_level_str == "🔥 Lv3 Resonance" ? 3 : min_alert_level_str == "🚀 Lv4 Panic" ? 4 : 5
+min_alert_level = min_alert_level_str == "📈 Lv1 Buy Zone" ? 1 : min_alert_level_str == "💎 Lv2 Divergence" ? 2 : min_alert_level_str == "🔥 Lv3 Resonance" ? 3 : min_alert_level_str == "🚀 Lv4 Panic" ? 4 : 5
 
 // 信号条件 (自动检测图表标的)
 autoBotTrig = (isSpy and spyBotTrig) or (isQqq and qqqBotTrig) or (isIwm and iwmBotTrig)
@@ -842,7 +1080,7 @@ if enable_smart_alert
 
     if should_alert_buy
         msg = str.format("{0}: 🟢 BUY Lv{1} → ", syminfo.ticker, current_buy_level)
-        
+
         // Signal labels (combo priority)
         if autoStrongBot and aggBottomEdge
             msg := msg + "🚀Panic+🔥Resonance "
@@ -851,15 +1089,16 @@ if enable_smart_alert
         else if aggBottomEdge
             msg := msg + "🔥Resonance "
         else if autoBotTrig
-            msg := msg + "📈Accumulate "
+            msg := msg + "📈Buy Zone "
         if autoBullishDiv
             msg := msg + "💎Divergence "
-        
-        // Context info
+
+        // v7.0 Context info (quality + drawdown + score)
         trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
-        msg := msg + str.format("| Score:{0,number,#.1} {1} Vol:{2,number,#.1} {3}", 
-            displayScore, trend_ctx, vol_fast, thresholdModeText)
-        
+        dd_ctx = displayDrawdown >= 5 ? str.format(" DD:{0,number,#}%", displayDrawdown) : ""
+        msg := msg + str.format("| Score:{0,number,#.1} ({1}){2} {3}",
+            displayScore, displayBuyQuality, dd_ctx, trend_ctx)
+
         alert(msg, alert.freq_once_per_bar)
         buy_alert_level_sent := current_buy_level
 
@@ -873,7 +1112,7 @@ if enable_smart_alert
 
     if should_alert_sell
         msg = str.format("{0}: 🔴 RISK Lv{1} → ", syminfo.ticker, current_sell_level)
-        
+
         // Signal labels (combo priority)
         if autoStrongTop and aggTopEdge
             msg := msg + "⚠️Reduce+❄️Resonance "
@@ -887,11 +1126,10 @@ if enable_smart_alert
             msg := msg + "⭐Elevated "
         if autoBearishDiv
             msg := msg + "💎Divergence "
-        
-        // Context info
+
+        // v7.0 Context info (score + trend)
         trend_ctx = displayUptrend ? "↑Trend" : "↓DOWN"
-        msg := msg + str.format("| Score:{0,number,#.1} {1} Vol:{2,number,#.1} {3}", 
-            displayScore, trend_ctx, vol_fast, thresholdModeText)
-        
+        msg := msg + str.format("| Score:{0,number,#.1} {1}", displayScore, trend_ctx)
+
         alert(msg, alert.freq_once_per_bar)
         sell_alert_level_sent := current_sell_level
