@@ -78,6 +78,17 @@ The indicator calculates a composite score from multiple factors:
 
 > **↑ = Uptrend** (Price > MA) | **↓ = Downtrend** (Price < MA)
 
+**v7.0 Signal Enhancements | v7.0 信号增强**:
+
+| Feature | Effect | 效果说明 |
+|:-------:|--------|----------|
+| **Quality Filter** | Only A/B grade signals trigger (2+ factors aligned) | 仅触发A/B级信号(2+因子同向) |
+| **Drawdown Bonus** | +1/+2/+3 score at 5%/10%/20% drawdown | 回撤5%/10%/20%时加分+1/+2/+3 |
+| **Divergence Assist** | Edge signals (1-2 pts short) can trigger with divergence | 边缘信号(差1-2分)可被背离触发 |
+
+> These enhancements improve win rate by filtering noise and leveraging US index long-term upward bias.
+> 这些增强通过过滤噪音和利用美股指数长期向上特性来提高胜率。
+
 ---
 
 ## Adaptive Logic | 自适应逻辑
