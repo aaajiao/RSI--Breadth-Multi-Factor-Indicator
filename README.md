@@ -418,7 +418,7 @@ The indicator uses an enhanced **V2 Smart Alert** system with **Signal Levels**,
 | **Lv4** | 🚀 | **Panic Low** | Strong buy: extreme multi-factor score |
 | **Lv3** | 🔥 | **Resonance** | 2+ markets in sync (default trigger level) |
 | **Lv2** | 💎 | **Divergence** | Price/RSI divergence detected |
-| **Lv1** | 📈/⚡ | **Accumulate/Caution** | Basic zone signals |
+| **Lv1** | 📈/⚡ | **Buy Zone/Caution** | Basic zone signals |
 
 ### Smart Features | 智能特性
 
@@ -453,7 +453,7 @@ QQQ: 🔴 RISK Lv3 → ❄️Resonance | Score:-5.0 ↓DOWN Vol:8.1 Fixed
 | Tag | Signal | Description |
 |:---:|:------:|-------------|
 | 🚀 | **Panic Low** | Strong buy opportunity |
-| 📈 | **Accumulate** | Buy zone - accumulation |
+| 📈 | **Buy Zone** | Buy zone - accumulation |
 | 🔥 | **Resonance** | Multi-market buy agreement |
 | 💎 | **Divergence** | Price/RSI divergence |
 | ⚠️ | **Reduce** | High risk, reduce position |
@@ -469,7 +469,7 @@ QQQ: 🔴 RISK Lv3 → ❄️Resonance | Score:-5.0 ↓DOWN Vol:8.1 Fixed
 | **Min Alert Level** | 🔥 Lv3 Resonance | Dropdown: Lv1-Lv5 |
 
 **Min Alert Level Options | 最小警报等级选项**:
-- 📈 Lv1 Accumulate
+- 📈 Lv1 Buy Zone
 - 💎 Lv2 Divergence  
 - 🔥 Lv3 Resonance *(default)*
 - 🚀 Lv4 Panic
@@ -604,7 +604,7 @@ Designed to improve signal quality and win rate, especially for US index trading
 ### v6.3 (2025-12-17)
 
 **🔔 Smart Alert V2 | 智能警报 V2**
-- **Signal Level System**: 5-level priority (Lv1 Accumulate → Lv5 Panic+Resonance)
+- **Signal Level System**: 5-level priority (Lv1 Buy Zone → Lv5 Panic+Resonance)
   信号等级系统：5级优先级（Lv1 低吸 → Lv5 恐慌+共振）
 - **Upgrade Trigger**: Send new alert when stronger signal appears within same bar
   升级触发：同一K线内出现更强信号时发送新警报

@@ -858,11 +858,11 @@ fontSizeHeader = dashboardFontSize == "Large" ? size.large : dashboardFontSize =
 
 // Prepare signal text (used in both modes)
 totalColor = displayScore >= adjBotThreshold ? color.lime : displayScore <= adjTopThreshold ? (displayUptrend ? color.yellow : color.red) : color.gray
-signalText = displayScore >= adjStrongBotThreshold ? "PANIC LOW" : 
-             displayScore >= adjBotThreshold ? "ACCUMULATE" : 
+signalText = displayScore >= adjStrongBotThreshold ? "PANIC LOW" :
+             displayScore >= adjBotThreshold ? "BUY ZONE" :
              displayElevated ? "ELEVATED" :
-             displayScore <= adjStrongTopThreshold ? "REDUCE" : 
-             displayScore <= adjTopThreshold ? "CAUTION" : 
+             displayScore <= adjStrongTopThreshold ? "REDUCE" :
+             displayScore <= adjTopThreshold ? "CAUTION" :
              "HOLD"
 signalEmoji = displayScore >= adjStrongBotThreshold ? "🚀" : 
               displayScore >= adjBotThreshold ? "📈" : 
@@ -999,10 +999,10 @@ if showDashboard and barstate.islast
 grpAlert = "Alerts 警报"
 enable_smart_alert = input.bool(true, "Enable Smart Alert 启用智能警报", group=grpAlert, 
     tooltip="V2智能警报：信号等级+升级触发+K线内去重\nV2 Smart Alert: signal levels + upgrade trigger + dedup")
-min_alert_level_str = input.string("🔥 Lv3 Resonance", "Min Alert Level 最小警报等级", 
-    options=["📈 Lv1 Accumulate", "💎 Lv2 Divergence", "🔥 Lv3 Resonance", "🚀 Lv4 Panic", "🚀🔥 Lv5 Combo"], 
+min_alert_level_str = input.string("🔥 Lv3 Resonance", "Min Alert Level 最小警报等级",
+    options=["📈 Lv1 Buy Zone", "💎 Lv2 Divergence", "🔥 Lv3 Resonance", "🚀 Lv4 Panic", "🚀🔥 Lv5 Combo"],
     group=grpAlert, tooltip="Only receive alerts >= this level")
-min_alert_level = min_alert_level_str == "📈 Lv1 Accumulate" ? 1 : min_alert_level_str == "💎 Lv2 Divergence" ? 2 : min_alert_level_str == "🔥 Lv3 Resonance" ? 3 : min_alert_level_str == "🚀 Lv4 Panic" ? 4 : 5
+min_alert_level = min_alert_level_str == "📈 Lv1 Buy Zone" ? 1 : min_alert_level_str == "💎 Lv2 Divergence" ? 2 : min_alert_level_str == "🔥 Lv3 Resonance" ? 3 : min_alert_level_str == "🚀 Lv4 Panic" ? 4 : 5
 
 // 信号条件 (自动检测图表标的)
 autoBotTrig = (isSpy and spyBotTrig) or (isQqq and qqqBotTrig) or (isIwm and iwmBotTrig)
@@ -1050,7 +1050,7 @@ if enable_smart_alert
         else if aggBottomEdge
             msg := msg + "🔥Resonance "
         else if autoBotTrig
-            msg := msg + "📈Accumulate "
+            msg := msg + "📈Buy Zone "
         if autoBullishDiv
             msg := msg + "💎Divergence "
         
