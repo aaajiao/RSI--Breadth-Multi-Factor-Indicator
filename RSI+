@@ -1046,7 +1046,7 @@ if enable_smart_alert
 
     if should_alert_buy
         msg = str.format("{0}: 🟢 BUY Lv{1} → ", syminfo.ticker, current_buy_level)
-        
+
         // Signal labels (combo priority)
         if autoStrongBot and aggBottomEdge
             msg := msg + "🚀Panic+🔥Resonance "
@@ -1058,12 +1058,13 @@ if enable_smart_alert
             msg := msg + "📈Buy Zone "
         if autoBullishDiv
             msg := msg + "💎Divergence "
-        
-        // Context info
+
+        // v7.0 Context info (quality + drawdown + score)
         trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
-        msg := msg + str.format("| Score:{0,number,#.1} {1} Vol:{2,number,#.1} {3}", 
-            displayScore, trend_ctx, vol_fast, thresholdModeText)
-        
+        dd_ctx = displayDrawdown >= 5 ? str.format(" DD:{0,number,#}%", displayDrawdown) : ""
+        msg := msg + str.format("| Score:{0,number,#.1} ({1}){2} {3}",
+            displayScore, displayBuyQuality, dd_ctx, trend_ctx)
+
         alert(msg, alert.freq_once_per_bar)
         buy_alert_level_sent := current_buy_level
 
@@ -1077,7 +1078,7 @@ if enable_smart_alert
 
     if should_alert_sell
         msg = str.format("{0}: 🔴 RISK Lv{1} → ", syminfo.ticker, current_sell_level)
-        
+
         // Signal labels (combo priority)
         if autoStrongTop and aggTopEdge
             msg := msg + "⚠️Reduce+❄️Resonance "
@@ -1091,11 +1092,10 @@ if enable_smart_alert
             msg := msg + "⭐Elevated "
         if autoBearishDiv
             msg := msg + "💎Divergence "
-        
-        // Context info
+
+        // v7.0 Context info (score + trend)
         trend_ctx = displayUptrend ? "↑Trend" : "↓DOWN"
-        msg := msg + str.format("| Score:{0,number,#.1} {1} Vol:{2,number,#.1} {3}", 
-            displayScore, trend_ctx, vol_fast, thresholdModeText)
-        
+        msg := msg + str.format("| Score:{0,number,#.1} {1}", displayScore, trend_ctx)
+
         alert(msg, alert.freq_once_per_bar)
         sell_alert_level_sent := current_sell_level
