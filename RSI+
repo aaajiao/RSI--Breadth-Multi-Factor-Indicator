@@ -677,9 +677,9 @@ spyBotAssisted = f_divergenceAssisted(spyScore, adjBotThreshold, spyBullishDivRa
 qqqBotAssisted = f_divergenceAssisted(qqqScore, adjBotThreshold, qqqBullishDivRaw, useDivergenceAssist)
 iwmBotAssisted = f_divergenceAssisted(iwmScore, adjBotThreshold, iwmBullishDivRaw, useDivergenceAssist)
 
-// v7.0: 应用信号质量过滤
+// v7.0: 应用信号质量过滤 (确保信号互斥)
 spyStrongBot = spyStrongBotRaw and spyBuyQualityOK
-spyBot = (spyBotOnly or (spyBotAssisted and not spyBotOnly)) and spyBuyQualityOK
+spyBot = (spyBotOnly or (spyBotAssisted and not spyBotOnly)) and spyBuyQualityOK and not spyStrongBot
 spyTop = spyTopOnly and spySellQualityOK
 spyStrongTop = spyStrongTopRaw and spySellQualityOK
 spyElevated = spyElevatedRaw
@@ -687,7 +687,7 @@ spyBotRaw = (spyStrongBot or spyBot)
 spyTopRaw = (spyStrongTop or spyTop)
 
 qqqStrongBot = qqqStrongBotRaw and qqqBuyQualityOK
-qqqBot = (qqqBotOnly or (qqqBotAssisted and not qqqBotOnly)) and qqqBuyQualityOK
+qqqBot = (qqqBotOnly or (qqqBotAssisted and not qqqBotOnly)) and qqqBuyQualityOK and not qqqStrongBot
 qqqTop = qqqTopOnly and qqqSellQualityOK
 qqqStrongTop = qqqStrongTopRaw and qqqSellQualityOK
 qqqElevated = qqqElevatedRaw
@@ -695,7 +695,7 @@ qqqBotRaw = (qqqStrongBot or qqqBot)
 qqqTopRaw = (qqqStrongTop or qqqTop)
 
 iwmStrongBot = iwmStrongBotRaw and iwmBuyQualityOK
-iwmBot = (iwmBotOnly or (iwmBotAssisted and not iwmBotOnly)) and iwmBuyQualityOK
+iwmBot = (iwmBotOnly or (iwmBotAssisted and not iwmBotOnly)) and iwmBuyQualityOK and not iwmStrongBot
 iwmTop = iwmTopOnly and iwmSellQualityOK
 iwmStrongTop = iwmStrongTopRaw and iwmSellQualityOK
 iwmElevated = iwmElevatedRaw
