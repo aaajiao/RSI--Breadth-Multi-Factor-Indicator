@@ -746,10 +746,8 @@ aggTopEdge    = aggTop and not aggTop[1]
 //========================
 // v7.0: Tiered Resonance System (分级共振)
 //========================
-[botResonanceStrength, botResonanceBonus, botSyncResonance, botSyncCount, botWindowCount] =
-    f_resonanceStrength(spyBotTrig, qqqBotTrig, iwmBotTrig, spyBotRecent, qqqBotRecent, iwmBotRecent)
-[topResonanceStrength, topResonanceBonus, topSyncResonance, topSyncCount, topWindowCount] =
-    f_resonanceStrength(spyTopTrig, qqqTopTrig, iwmTopTrig, spyTopRecent, qqqTopRecent, iwmTopRecent)
+[botResonanceStrength, botResonanceBonus, botSyncResonance, botSyncCount, botWindowCount] = f_resonanceStrength(spyBotTrig, qqqBotTrig, iwmBotTrig, spyBotRecent, qqqBotRecent, iwmBotRecent)
+[topResonanceStrength, topResonanceBonus, topSyncResonance, topSyncCount, topWindowCount] = f_resonanceStrength(spyTopTrig, qqqTopTrig, iwmTopTrig, spyTopRecent, qqqTopRecent, iwmTopRecent)
 
 //========================
 // Plot selection
