@@ -182,9 +182,12 @@ dashboardPosition = input.string("Top Right", "Panel Position 面板位置",
              "Middle Left", "Middle Right"], group=grp6,
     tooltip="面板显示位置 Dashboard location on chart")
 
-dashboardFontSize = input.string("Small", "Font Size 字体大小", 
+dashboardFontSize = input.string("Small", "Font Size 字体大小",
     options=["Tiny", "Small", "Normal", "Large"], group=grp6,
     tooltip="Tiny: 最小 | Small: 默认 | Normal: 中等 | Large: 最大")
+
+showSignalZone = input.bool(true, "Show Signal Zone 显示信号区间", group=grp6,
+    tooltip="信号触发后背景高亮直到回归HOLD\nHighlight background from signal trigger until back to HOLD\n绿色=买入区间 | 红色=卖出区间")
 
 //========================
 // Mode presets
@@ -790,6 +793,37 @@ displayBuyQuality = showSpy ? spyBuyQuality : showQqq ? qqqBuyQuality : showIwm 
 displayDrawdown = showSpy ? spyDrawdown : showQqq ? qqqDrawdown : showIwm ? iwmDrawdown : (spyDrawdown + qqqDrawdown + iwmDrawdown) / 3
 displayDrawdownBonus = showSpy ? spyDrawdownBonus : showQqq ? qqqDrawdownBonus : showIwm ? iwmDrawdownBonus : (spyDrawdownBonus + qqqDrawdownBonus + iwmDrawdownBonus) / 3
 displayPosFactor = showSpy ? spyPosFactor : showQqq ? qqqPosFactor : showIwm ? iwmPosFactor : int((spyPosFactor + qqqPosFactor + iwmPosFactor) / 3)
+
+//========================
+// Signal Zone State (v7.0: 信号区间状态跟踪)
+//========================
+// 信号触发条件 (使用当前显示模式的信号)
+displayBotTrig = showSpy ? spyBotTrig : showQqq ? qqqBotTrig : showIwm ? iwmBotTrig : aggBottomEdge
+displayTopTrig = showSpy ? spyTopTrig : showQqq ? qqqTopTrig : showIwm ? iwmTopTrig : aggTopEdge
+displayBotSignal = showSpy ? (spyStrongBot or spyBot) : showQqq ? (qqqStrongBot or qqqBot) : showIwm ? (iwmStrongBot or iwmBot) : aggBottom
+displayTopSignal = showSpy ? (spyStrongTop or spyTop) : showQqq ? (qqqStrongTop or qqqTop) : showIwm ? (iwmStrongTop or iwmTop) : aggTop
+
+// HOLD 区间: 评分在买入和卖出阈值之间
+isHoldZone = displayScore < adjBotThreshold and displayScore > adjTopThreshold
+
+// 使用 var 跟踪当前区间状态 (0=无, 1=买入区间, -1=卖出区间)
+var int signalZoneState = 0
+
+// 状态转换逻辑
+if displayBotTrig and displayBotSignal
+    signalZoneState := 1  // 进入买入区间
+else if displayTopTrig and displayTopSignal
+    signalZoneState := -1  // 进入卖出区间
+else if isHoldZone
+    signalZoneState := 0  // 回到 HOLD，结束区间
+
+// 背景颜色
+buyZoneColor = color.new(color.lime, 90)  // 绿色半透明
+sellZoneColor = color.new(color.red, 90)  // 红色半透明
+
+// 绘制背景
+bgcolor(showSignalZone and signalZoneState == 1 ? buyZoneColor : na, title="Buy Zone Background")
+bgcolor(showSignalZone and signalZoneState == -1 ? sellZoneColor : na, title="Sell Zone Background")
 
 //========================
 // Plot shapes
