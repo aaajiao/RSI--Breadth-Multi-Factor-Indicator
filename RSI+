@@ -772,7 +772,10 @@ showQqq = modePlot == "QQQ"
 showIwm = modePlot == "IWM"
 showAgg = modePlot == "AGG(共振)"
 
-displayScore = showSpy ? spyScore : showQqq ? qqqScore : showIwm ? iwmScore : (spyScore + qqqScore + iwmScore) / 3
+// v7.0: Add resonance bonus to display score
+displayResonanceBonus = showAgg ? botResonanceBonus : 0.0
+displayScoreBase = showSpy ? spyScore : showQqq ? qqqScore : showIwm ? iwmScore : (spyScore + qqqScore + iwmScore) / 3
+displayScore = displayScoreBase + displayResonanceBonus
 displayRsiS = showSpy ? spyRsiS : showQqq ? qqqRsiS : showIwm ? iwmRsiS : (spyRsiS + qqqRsiS + iwmRsiS) / 3
 displayFiS = showSpy ? spyFiS : showQqq ? qqqFiS : showIwm ? iwmFiS : (spyFiS + qqqFiS + iwmFiS) / 3
 displayTwS = showSpy ? spyTwS : showQqq ? qqqTwS : showIwm ? iwmTwS : (spyTwS + qqqTwS + iwmTwS) / 3
@@ -956,41 +959,43 @@ if showDashboard and barstate.islast
         table.cell(dashboard, 0, 7, "Div", text_color=color.white, text_size=fontSize)
         table.cell(dashboard, 1, 7, divText, text_color=divColor, text_size=fontSize)
         table.cell(dashboard, 2, 7, useDivergence ? "ON" : "OFF", text_color=useDivergence ? color.lime : color.gray, text_size=fontSize)
-        
-        // Total
-        table.cell(dashboard, 0, 8, "Total", text_color=color.white, text_size=fontSizeHeader)
-        table.cell(dashboard, 1, 8, str.tostring(displayScore, "#.#"), text_color=totalColor, text_size=fontSizeHeader)
-        table.cell(dashboard, 2, 8, signalText, text_color=totalColor, text_size=fontSize)
-        
+
         // Lookback Health
         health_text = health_ok ? "✓ OK" : "⚠ Check"
         health_color = health_ok ? color.lime : color.orange
-        table.cell(dashboard, 0, 9, "Lookback", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 9, str.tostring(adaptiveLookback), text_color=color.aqua, text_size=fontSize)
-        table.cell(dashboard, 2, 9, health_text, text_color=health_color, text_size=fontSize)
-        
+        table.cell(dashboard, 0, 8, "Lookback", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 8, str.tostring(adaptiveLookback), text_color=color.aqua, text_size=fontSize)
+        table.cell(dashboard, 2, 8, health_text, text_color=health_color, text_size=fontSize)
+
         // Cooldown
         cooldown_color = useDynamicCooldown ? color.aqua : color.yellow
         cooldown_text = useDynamicCooldown ? "Dyn" : "Fix"
-        table.cell(dashboard, 0, 10, "Cooldown", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 10, str.tostring(cooldownBars) + "b", text_color=cooldown_color, text_size=fontSize)
-        table.cell(dashboard, 2, 10, cooldown_text, text_color=cooldown_color, text_size=fontSize)
+        table.cell(dashboard, 0, 9, "Cooldown", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 9, str.tostring(cooldownBars) + "b", text_color=cooldown_color, text_size=fontSize)
+        table.cell(dashboard, 2, 9, cooldown_text, text_color=cooldown_color, text_size=fontSize)
 
         // v7.0: Signal Quality
         qualityColor = displayBuyQuality == "A" ? color.lime : displayBuyQuality == "B" ? color.yellow : color.gray
         qualityText = displayBuyQuality + " Grade"
         factorText = str.tostring(displayPosFactor) + "/4 Factors"
-        table.cell(dashboard, 0, 11, "Quality", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 11, qualityText, text_color=qualityColor, text_size=fontSize)
-        table.cell(dashboard, 2, 11, factorText, text_color=qualityColor, text_size=fontSize)
+        table.cell(dashboard, 0, 10, "Quality", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 10, qualityText, text_color=qualityColor, text_size=fontSize)
+        table.cell(dashboard, 2, 10, factorText, text_color=qualityColor, text_size=fontSize)
 
         // v7.0: Drawdown Bonus
         ddColor = displayDrawdown >= 10 ? color.lime : displayDrawdown >= 5 ? color.yellow : color.gray
         ddText = displayDrawdown >= 1 ? str.tostring(displayDrawdown, "#.#") + "%" : "-"
         bonusText = displayDrawdownBonus > 0 ? "+" + str.tostring(displayDrawdownBonus, "#.#") : "-"
-        table.cell(dashboard, 0, 12, "Drawdown", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 12, ddText, text_color=ddColor, text_size=fontSize)
-        table.cell(dashboard, 2, 12, bonusText, text_color=ddColor, text_size=fontSize)
+        table.cell(dashboard, 0, 11, "Drawdown", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 11, ddText, text_color=ddColor, text_size=fontSize)
+        table.cell(dashboard, 2, 11, bonusText, text_color=ddColor, text_size=fontSize)
+
+        // Total (v7.0: includes drawdown + resonance bonus) - LAST ROW
+        resonanceText = displayResonanceBonus > 0 ? "🔥+" + str.tostring(displayResonanceBonus, "#.#") : ""
+        totalText = str.tostring(displayScore, "#.#") + resonanceText
+        table.cell(dashboard, 0, 12, "Total", text_color=color.white, text_size=fontSizeHeader)
+        table.cell(dashboard, 1, 12, totalText, text_color=totalColor, text_size=fontSizeHeader)
+        table.cell(dashboard, 2, 12, signalText, text_color=totalColor, text_size=fontSize)
 
 //========================
 // Smart Alert V2 (Enhanced from Adaptive RSI Pro)
