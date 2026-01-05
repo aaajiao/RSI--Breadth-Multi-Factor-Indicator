@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v7.0", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.1", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -223,19 +223,22 @@ f_recent(_cond, _bars) =>
         not na(bs) and bs <= _bars
 
 f_applyCooldown(_rawSig, _coolBars, _lastBar) =>
-    can = na(_lastBar) or (bar_index - _lastBar > _coolBars)
+    can = na(_lastBar) or (bar_index - _lastBar >= _coolBars)
     _rawSig and (_coolBars == 0 or can)
 
 // Dynamic Cooldown Function (动态冷却计算)
 // High volatility → shorter cooldown (market moves fast, need quick response)
 // Low volatility → longer cooldown (market calm, avoid noise signals)
 f_dynamicCooldown(_baseCooldown, _volFast, _volThreshold) =>
-    volRatio = _volFast / _volThreshold
-    // 高波动 (>1.2x): 60% 冷却 | 正常: 100% | 低波动 (<0.8x): 150% 冷却
-    adjustedCooldown = volRatio > 1.2 ? int(_baseCooldown * 0.6) :
-                       volRatio < 0.8 ? int(_baseCooldown * 1.5) :
-                       _baseCooldown
-    math.max(3, adjustedCooldown)  // 最小3根K线
+    if _baseCooldown == 0
+        0  // 保留用户 "无限制" 设定 Preserve user's "no limit" setting
+    else
+        volRatio = _volFast / _volThreshold
+        // 高波动 (>1.2x): 60% 冷却 | 正常: 100% | 低波动 (<0.8x): 150% 冷却
+        adjustedCooldown = volRatio > 1.2 ? int(_baseCooldown * 0.6) :
+                           volRatio < 0.8 ? int(_baseCooldown * 1.5) :
+                           _baseCooldown
+        math.max(3, adjustedCooldown)  // 最小3根K线
 
 //========================
 // v7.0 Optimization Functions (胜率优化函数)
@@ -261,8 +264,7 @@ f_signalQuality(_rsiS, _fiS, _twS, _volS, _addS, _intraday) =>
     else
         negativeFactors := negativeFactors + (_fiS < 0 ? 1 : 0) + (_twS < 0 ? 1 : 0)
 
-    // 信号质量等级
-    maxFactors = _intraday ? 3 : 4
+    // 信号质量等级 (A=3+ factors, B=2 factors, C=<2 factors)
     buyQuality = positiveFactors >= 3 ? "A" : positiveFactors >= 2 ? "B" : "C"
     sellQuality = negativeFactors >= 3 ? "A" : negativeFactors >= 2 ? "B" : "C"
 
@@ -446,12 +448,15 @@ f_totalScore(_rsi, _tw, _fi, _uvol, _dvol, _add, _intraday, _oversold1, _oversol
 
 //========================
 // Signal Generation Function (信号生成 - 模块化)
+// v7.1: 分离买入/卖出评分参数
 //========================
-f_generateSignals(_score, _uptrend, _adjBotTh, _adjStrongBotTh, _adjTopTh, _adjStrongTopTh) =>
-    strongBot = _score >= _adjStrongBotTh
-    bot = _score >= _adjBotTh and _score < _adjStrongBotTh
-    topCond = _score <= _adjTopTh and _score > _adjStrongTopTh
-    strongTopCond = _score <= _adjStrongTopTh
+f_generateSignals(_buyScore, _sellScore, _uptrend, _adjBotTh, _adjStrongBotTh, _adjTopTh, _adjStrongTopTh) =>
+    // 买入信号使用买入评分 (含回撤加分)
+    strongBot = _buyScore >= _adjStrongBotTh
+    bot = _buyScore >= _adjBotTh and _buyScore < _adjStrongBotTh
+    // 卖出信号使用卖出评分 (不含回撤加分)
+    topCond = _sellScore <= _adjTopTh and _sellScore > _adjStrongTopTh
+    strongTopCond = _sellScore <= _adjStrongTopTh
     top = topCond and (not useTrendFilter or not _uptrend)
     strongTop = strongTopCond and (not useTrendFilter or not _uptrend)
     elevated = (topCond or strongTopCond) and _uptrend and useTrendFilter
@@ -467,6 +472,19 @@ f_generateSignals(_score, _uptrend, _adjBotTh, _adjStrongBotTh, _adjTopTh, _adjS
 spyRSI = f_rsi_from_close(spyC)
 qqqRSI = f_rsi_from_close(qqqC)
 iwmRSI = f_rsi_from_close(iwmC)
+
+//========================
+// Ticker Detection (提前检测以支持自适应驱动)
+// Early detection to support adaptive driver selection
+//========================
+tickerName = str.upper(syminfo.ticker)
+isSpy = str.contains(tickerName, "SPY") or str.contains(tickerName, "SPX") or tickerName == "ES" or tickerName == "MES" or str.contains(tickerName, "ES1!")
+isQqq = str.contains(tickerName, "QQQ") or str.contains(tickerName, "NDX") or tickerName == "NQ" or tickerName == "MNQ" or str.contains(tickerName, "NQ1!")
+isIwm = str.contains(tickerName, "IWM") or str.contains(tickerName, "RUT") or str.contains(tickerName, "RTY") or tickerName == "M2K"
+
+// 自适应系统驱动 RSI：基于当前图表市场
+// Adaptive system driver RSI: based on current chart market
+driverRSI = isSpy ? spyRSI : isQqq ? qqqRSI : isIwm ? iwmRSI : spyRSI
 
 s5tw = f_secDaily(s5twSym, close)
 s5fi = f_secDaily(s5fiSym, close)
@@ -487,9 +505,10 @@ addValue = f_sec(addSym, close)
 // Dual Volatility System & Auto-Adaptive Lookback (双重波动率系统)
 //========================
 
-// Step 1: 短期波动（自适应到 RSI 长度）
+// Step 1: 短期波动（自适应到 RSI 长度，使用当前图表市场）
+// Short-term volatility using current chart market's RSI
 vol_short_period = rsiLen * 4
-vol_short = ta.stdev(spyRSI, vol_short_period)
+vol_short = ta.stdev(driverRSI, vol_short_period)
 
 // Step 2: 长期波动（根据用户选择的历史深度）
 vol_history_days = volHistoryMode == "6 Months" ? 126 : volHistoryMode == "1 Year" ? 252 : 504
@@ -498,7 +517,7 @@ vol_history_days = volHistoryMode == "6 Months" ? 126 : volHistoryMode == "1 Yea
 tf_minutes = timeframe.in_seconds(timeframe.period) / 60
 bars_per_day = timeframe.isdaily or timeframe.isweekly or timeframe.ismonthly ? 1 : math.ceil(1440 / tf_minutes)
 vol_long_period = math.min(1000, vol_history_days * bars_per_day)
-vol_long = ta.stdev(spyRSI, vol_long_period)
+vol_long = ta.stdev(driverRSI, vol_long_period)
 
 // Step 3: 动态加权组合
 // 基础：70% 长期 + 30% 短期（偏向稳定）
@@ -533,12 +552,13 @@ health_stat_valid = adaptiveLookback >= stat_required * 0.9
 // Adaptive Threshold Selection (自适应阈值选择)
 //========================
 
-// 双重检测系统（快速触发 + 慢速确认）
+// 双重检测系统（快速触发 + 慢速确认，使用当前图表市场）
+// Dual detection system using current chart market's RSI
 vol_fast_period = int(rsiLen * 1.5)  // 快速检测：约 21 根 K 线（如果 RSI=14）
-vol_fast = ta.stdev(spyRSI, vol_fast_period)
+vol_fast = ta.stdev(driverRSI, vol_fast_period)
 
 vol_slow_period = int(rsiLen * 3)    // 慢速确认：约 42 根 K 线
-vol_slow = ta.stdev(spyRSI, vol_slow_period)
+vol_slow = ta.stdev(driverRSI, vol_slow_period)
 
 // 自动模式逻辑：快速检测 OR 慢速确认
 useAdaptive = thresholdMode == "Auto" ? 
@@ -583,18 +603,33 @@ health_ok = health_sample_coverage and health_stat_valid and health_distribution
 //========================
 // v7.0: Apply Drawdown Bonus (回撤加分)
 //========================
-spyHigh252 = ta.highest(spyC, 252)
-qqqHigh252 = ta.highest(qqqC, 252)
-iwmHigh252 = ta.highest(iwmC, 252)
+// v7.1 Fix: Use daily timeframe for 252-day high (intraday charts need daily reference)
+// 修复: 使用日线时间框架计算252日高点 (日内图表需要日线参考)
+spyHigh252 = f_secDaily(spySym, ta.highest(close, 252))
+qqqHigh252 = f_secDaily(qqqSym, ta.highest(close, 252))
+iwmHigh252 = f_secDaily(iwmSym, ta.highest(close, 252))
 
 [spyDrawdownBonus, spyDrawdown] = f_drawdownBonus(spyC, spyHigh252)
 [qqqDrawdownBonus, qqqDrawdown] = f_drawdownBonus(qqqC, qqqHigh252)
 [iwmDrawdownBonus, iwmDrawdown] = f_drawdownBonus(iwmC, iwmHigh252)
 
-// 应用回撤加分 (仅限买入方向)
-spyScore = useDrawdownBonus ? spyScoreRaw + spyDrawdownBonus : spyScoreRaw
-qqqScore = useDrawdownBonus ? qqqScoreRaw + qqqDrawdownBonus : qqqScoreRaw
-iwmScore = useDrawdownBonus ? iwmScoreRaw + iwmDrawdownBonus : iwmScoreRaw
+// v7.1: 分离买入/卖出评分 (回撤加分仅影响买入信号)
+// Separate buy/sell scores: drawdown bonus only affects buy signal evaluation
+spyBuyScore = useDrawdownBonus ? spyScoreRaw + spyDrawdownBonus : spyScoreRaw
+qqqBuyScore = useDrawdownBonus ? qqqScoreRaw + qqqDrawdownBonus : qqqScoreRaw
+iwmBuyScore = useDrawdownBonus ? iwmScoreRaw + iwmDrawdownBonus : iwmScoreRaw
+
+// 卖出评分使用原始分数 (不含回撤加分)
+// Sell score uses raw score (no drawdown bonus)
+spySellScore = spyScoreRaw
+qqqSellScore = qqqScoreRaw
+iwmSellScore = iwmScoreRaw
+
+// 显示评分 (面板显示买入评分，因其包含完整信息)
+// Display score uses buy score (includes all factors for dashboard)
+spyScore = spyBuyScore
+qqqScore = qqqBuyScore
+iwmScore = iwmBuyScore
 
 //========================
 // v7.0: Signal Quality Assessment (信号质量评估)
@@ -670,15 +705,15 @@ spyUptrend = spyC > spyTrendMA
 qqqUptrend = qqqC > qqqTrendMA
 iwmUptrend = iwmC > iwmTrendMA
 
-// 原始信号生成
-[spyStrongBotRaw, spyBotOnly, spyTopOnly, spyStrongTopRaw, spyElevatedRaw, spyBotRawBase, spyTopRawBase] = f_generateSignals(spyScore, spyUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
-[qqqStrongBotRaw, qqqBotOnly, qqqTopOnly, qqqStrongTopRaw, qqqElevatedRaw, qqqBotRawBase, qqqTopRawBase] = f_generateSignals(qqqScore, qqqUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
-[iwmStrongBotRaw, iwmBotOnly, iwmTopOnly, iwmStrongTopRaw, iwmElevatedRaw, iwmBotRawBase, iwmTopRawBase] = f_generateSignals(iwmScore, iwmUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+// 原始信号生成 (v7.1: 分离买入/卖出评分)
+[spyStrongBotRaw, spyBotOnly, spyTopOnly, spyStrongTopRaw, spyElevatedRaw, spyBotRawBase, spyTopRawBase] = f_generateSignals(spyBuyScore, spySellScore, spyUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+[qqqStrongBotRaw, qqqBotOnly, qqqTopOnly, qqqStrongTopRaw, qqqElevatedRaw, qqqBotRawBase, qqqTopRawBase] = f_generateSignals(qqqBuyScore, qqqSellScore, qqqUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+[iwmStrongBotRaw, iwmBotOnly, iwmTopOnly, iwmStrongTopRaw, iwmElevatedRaw, iwmBotRawBase, iwmTopRawBase] = f_generateSignals(iwmBuyScore, iwmSellScore, iwmUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
 
-// v7.0: 应用背离助推 (边缘信号可被背离触发)
-spyBotAssisted = f_divergenceAssisted(spyScore, adjBotThreshold, spyBullishDivRaw, useDivergenceAssist)
-qqqBotAssisted = f_divergenceAssisted(qqqScore, adjBotThreshold, qqqBullishDivRaw, useDivergenceAssist)
-iwmBotAssisted = f_divergenceAssisted(iwmScore, adjBotThreshold, iwmBullishDivRaw, useDivergenceAssist)
+// v7.0: 应用背离助推 (边缘信号可被背离触发) - v7.1: 使用买入评分
+spyBotAssisted = f_divergenceAssisted(spyBuyScore, adjBotThreshold, spyBullishDivRaw, useDivergenceAssist)
+qqqBotAssisted = f_divergenceAssisted(qqqBuyScore, adjBotThreshold, qqqBullishDivRaw, useDivergenceAssist)
+iwmBotAssisted = f_divergenceAssisted(iwmBuyScore, adjBotThreshold, iwmBullishDivRaw, useDivergenceAssist)
 
 // v7.0: 应用信号质量过滤 (确保信号互斥)
 spyStrongBot = spyStrongBotRaw and spyBuyQualityOK
@@ -762,13 +797,9 @@ aggTopEdge    = aggTop and not aggTop[1]
 [topResonanceStrength, topResonanceBonus, topSyncResonance, topSyncCount, topWindowCount] = f_resonanceStrength(spyTopTrig, qqqTopTrig, iwmTopTrig, spyTopRecent, qqqTopRecent, iwmTopRecent)
 
 //========================
-// Plot selection
+// Plot selection (ticker 检测已在前面完成)
+// Plot selection (ticker detection done earlier)
 //========================
-tickerName = str.upper(syminfo.ticker)
-isSpy = str.contains(tickerName, "SPY") or str.contains(tickerName, "SPX") or tickerName == "ES" or tickerName == "MES" or str.contains(tickerName, "ES1!")
-isQqq = str.contains(tickerName, "QQQ") or str.contains(tickerName, "NDX") or tickerName == "NQ" or tickerName == "MNQ" or str.contains(tickerName, "NQ1!")
-isIwm = str.contains(tickerName, "IWM") or str.contains(tickerName, "RUT") or str.contains(tickerName, "RTY") or tickerName == "M2K"
-
 modePlot = plotMode == "AUTO" ? (isSpy ? "SPY" : isQqq ? "QQQ" : isIwm ? "IWM" : "AGG(共振)") : plotMode
 showSpy = modePlot == "SPY"
 showQqq = modePlot == "QQQ"
@@ -1075,8 +1106,9 @@ if enable_smart_alert
     has_buy_signal_prev = autoBotTrig[1] or aggBottomEdge[1] or autoBullishDiv[1]
     current_buy_level = f_buy_level(autoStrongBot, autoBotTrig, aggBottomEdge, autoBullishDiv)
 
-    // 触发条件：新信号(上升沿) 且 (未发送过 或 当前等级更高) 且 达到最小等级
-    should_alert_buy = has_buy_signal and not has_buy_signal_prev and current_buy_level > buy_alert_level_sent and current_buy_level >= min_alert_level
+    // 触发条件：有信号 且 当前等级更高 且 达到最小等级（支持同K线升级触发）
+    // Trigger: has signal AND higher level AND meets min level (supports same-bar upgrades)
+    should_alert_buy = has_buy_signal and current_buy_level > buy_alert_level_sent and current_buy_level >= min_alert_level
 
     if should_alert_buy
         msg = str.format("{0}: 🟢 BUY Lv{1} → ", syminfo.ticker, current_buy_level)
@@ -1099,7 +1131,7 @@ if enable_smart_alert
         msg := msg + str.format("| Score:{0,number,#.1} ({1}){2} {3}",
             displayScore, displayBuyQuality, dd_ctx, trend_ctx)
 
-        alert(msg, alert.freq_once_per_bar)
+        alert(msg, alert.freq_all)
         buy_alert_level_sent := current_buy_level
 
     // === 卖出/风险信号 ===
@@ -1107,8 +1139,9 @@ if enable_smart_alert
     has_sell_signal_prev = autoTopTrig[1] or aggTopEdge[1] or autoBearishDiv[1] or autoElevated[1]
     current_sell_level = f_sell_level(autoStrongTop, autoTopTrig, aggTopEdge, autoBearishDiv, autoElevated)
 
-    // 触发条件：新信号(上升沿) 且 (未发送过 或 当前等级更高) 且 达到最小等级
-    should_alert_sell = has_sell_signal and not has_sell_signal_prev and current_sell_level > sell_alert_level_sent and current_sell_level >= min_alert_level
+    // 触发条件：有信号 且 当前等级更高 且 达到最小等级（支持同K线升级触发）
+    // Trigger: has signal AND higher level AND meets min level (supports same-bar upgrades)
+    should_alert_sell = has_sell_signal and current_sell_level > sell_alert_level_sent and current_sell_level >= min_alert_level
 
     if should_alert_sell
         msg = str.format("{0}: 🔴 RISK Lv{1} → ", syminfo.ticker, current_sell_level)
@@ -1128,8 +1161,8 @@ if enable_smart_alert
             msg := msg + "💎Divergence "
 
         // v7.0 Context info (score + trend)
-        trend_ctx = displayUptrend ? "↑Trend" : "↓DOWN"
+        trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
         msg := msg + str.format("| Score:{0,number,#.1} {1}", displayScore, trend_ctx)
 
-        alert(msg, alert.freq_once_per_bar)
+        alert(msg, alert.freq_all)
         sell_alert_level_sent := current_sell_level

@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v7.0
+# RSI+ Breadth Multi-Factor Indicator v7.1
 
 **Adaptive Scoring System for US Market Timing | 美股多因子自适应择时系统**
 
@@ -16,7 +16,18 @@ A quantitative indicator that combines **RSI**, **Market Breadth**, **Volume Rat
 
 ---
 
-## What's New in v7 | v7 新功能
+## What's New in v7.1 | v7.1 新功能
+
+| Feature | Description | 中文说明 |
+|:---:|---|---|
+| 🔧 | **Bug Fixes** | **错误修复**：修复 v7.0 中 6 个关键问题 (警报/冷却/回撤) |
+| 🎯 | **Market Driver RSI** | **市场驱动 RSI**：每个市场使用自己的 RSI 进行自适应计算 |
+| 📉 | **Drawdown Buy-Only** | **回撤仅买入**：回撤加分仅影响买入信号，不干扰卖出灵敏度 |
+| ⏱️ | **Cooldown Fixes** | **冷却修复**：`cooldown=0` 正确禁用，off-by-one 修复 |
+
+---
+
+## What's New in v7.0 | v7.0 新功能
 
 | Feature | Description | 中文说明 |
 |:---:|---|---|
@@ -538,6 +549,46 @@ auto_lookback = clamp(stat_required, 100, 1000)
 
 ## Changelog | 更新日志
 
+### v7.1 (2025-01-05)
+
+**🔧 Bug Fixes & Improvements | 错误修复与改进**
+
+Critical fixes for v7.0 issues identified in code review.
+
+v7.0 代码审查中发现的关键问题修复。
+
+- **Alert Upgrade Trigger Fix**: Alerts now correctly fire when signal upgrades mid-bar
+  警报升级触发修复：K线内信号升级时正确触发警报
+  - Changed `freq_once_per_bar` → `freq_all` for signal level system
+  - Removed conflicting rising-edge requirements
+
+- **Dynamic Cooldown Zero Fix**: `cooldown=0` now correctly disables cooldown
+  动态冷却零值修复：`cooldown=0` 现在正确禁用冷却期
+  - Previously always enforced minimum 3 bars
+
+- **Cooldown Off-by-One Fix**: Cooldown calculation now correctly inclusive
+  冷却期 Off-by-one 修复：冷却计算现在正确包含边界
+  - Changed `>` to `>=` in `f_applyCooldown`
+
+- **Market Driver RSI Fix**: Each market now uses its own RSI for adaptive calculations
+  市场驱动 RSI 修复：每个市场现在使用自己的 RSI 进行自适应计算
+  - SPY chart uses SPY RSI, QQQ uses QQQ RSI, IWM uses IWM RSI
+  - Previously all markets incorrectly used SPY RSI
+
+- **Drawdown Timeframe Fix**: 252-day high now correctly uses daily data on intraday charts
+  回撤时间框架修复：252日高点在日内图表上现在正确使用日线数据
+  - Previously 252 bars ≠ 252 days on intraday timeframes
+
+- **Drawdown Buy-Only Fix**: Drawdown bonus now only affects buy signals
+  回撤仅买入方向修复：回撤加分现在仅影响买入信号
+  - Sell signals use raw score (no drawdown bonus interference)
+  - Prevents drawdown from incorrectly reducing sell signal sensitivity
+
+- **Code Cleanup**: Removed unused variables, fixed alert message consistency
+  代码清理：移除未使用变量，修复警报消息一致性
+
+---
+
 ### v7.0 (2025-12-28)
 
 **🎯 Win Rate Optimization | 胜率优化**
@@ -694,7 +745,7 @@ This indicator is for educational and research purposes only. Past performance d
 
 ---
 
-**Version**: 7.0
+**Version**: 7.1
 **Pine Script**: v6
-**Last Updated**: 2025-12-28
+**Last Updated**: 2025-01-05
 
