@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v7.1", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.2", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -203,6 +203,49 @@ cooldownBarsBase = mode == "Aggressive" ? 5 : mode == "Conservative" ? 15 : cool
 //========================
 // Helpers
 //========================
+
+// v7.2: Progress Bar Generator (进度条生成器)
+// 生成可视化进度条字符串
+f_progressBar(_value, _min, _max, _length) =>
+    normalized = math.max(0.0, math.min(1.0, (_value - _min) / (_max - _min)))
+    filled = int(math.round(normalized * _length))
+    empty = _length - filled
+    result = ""
+    if filled > 0
+        for i = 0 to filled - 1
+            result := result + "█"
+    if empty > 0
+        for i = 0 to empty - 1
+            result := result + "░"
+    result
+
+// v7.2: Centered Progress Bar (居中进度条 - 用于分数显示)
+// 中点为0，负值向左填充，正值向右填充
+f_centeredBar(_value, _absMax, _halfLength) =>
+    // _halfLength 是单侧长度，总长度为 _halfLength * 2
+    leftPart = ""
+    rightPart = ""
+    if _value >= 0
+        // 正值：左边全空，右边填充
+        leftFilled = 0
+        rightFilled = int(math.round(math.min(_value, _absMax) / _absMax * _halfLength))
+        for i = 0 to _halfLength - 1
+            leftPart := leftPart + "░"
+        for i = 0 to _halfLength - 1
+            rightPart := rightPart + (i < rightFilled ? "█" : "░")
+    else
+        // 负值：左边从右向左填充，右边全空
+        leftFilled = int(math.round(math.min(math.abs(_value), _absMax) / _absMax * _halfLength))
+        for i = 0 to _halfLength - 1
+            leftPart := leftPart + (i >= _halfLength - leftFilled ? "█" : "░")
+        for i = 0 to _halfLength - 1
+            rightPart := rightPart + "░"
+    leftPart + "│" + rightPart
+
+// v7.2: Market Status Indicator (市场状态指示器)
+f_marketStatus(_score, _botTh, _topTh) =>
+    _score >= _botTh ? "🟢" : _score <= _topTh ? "🔴" : "🟡"
+
 f_sec(_sym, _expr) =>
     request.security(_sym, tfData, _expr, barmerge.gaps_off, barmerge.lookahead_off)
 
@@ -942,125 +985,121 @@ signalEmoji = displayScore >= adjStrongBotThreshold ? "🚀" :
 divColor = displayBullishDiv ? color.aqua : displayBearishDiv ? color.fuchsia : color.gray
 thresholdColor = useAdaptive ? color.aqua : color.yellow
 
+// v7.2: Prepare market status indicators for three markets
+spyStatus = f_marketStatus(spyScore, adjBotThreshold, adjTopThreshold)
+qqqStatus = f_marketStatus(qqqScore, adjBotThreshold, adjTopThreshold)
+iwmStatus = f_marketStatus(iwmScore, adjBotThreshold, adjTopThreshold)
+
+// Dynamic frame color based on signal state
+frameColor = displayScore >= adjBotThreshold ? color.new(color.lime, 50) : 
+             displayScore <= adjTopThreshold ? color.new(color.red, 50) : 
+             color.new(color.gray, 50)
+
 if showDashboard and barstate.islast
     if useMobileMode
-        // Mobile Mode: Compact 4-row × 2-col display (v7.0 adds Quality row)
-        var table dashboardMobile = table.new(dashboardPos, 2, 4, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
+        //==========================================================
+        // v7.2 Mobile Mode: 4-row × 2-col with Progress Bar
+        //==========================================================
+        var table dashboardMobile = table.new(dashboardPos, 2, 4, bgcolor=color.new(color.black, 85), frame_color=frameColor, frame_width=2, border_color=color.new(color.gray, 70), border_width=1)
 
-        // Row 0: Signal Emoji + Signal Text
-        table.cell(dashboardMobile, 0, 0, signalEmoji, text_color=totalColor, text_size=fontSizeHeader)
-        table.cell(dashboardMobile, 1, 0, signalText, text_color=totalColor, text_size=fontSize)
+        // Row 0: Signal Emoji + Signal Text + Score
+        scoreWithTrend = str.tostring(displayScore, "#.#") + (displayUptrend ? "↑" : "↓")
+        table.cell(dashboardMobile, 0, 0, signalEmoji + " " + signalText, text_color=totalColor, text_size=fontSizeHeader)
+        table.cell(dashboardMobile, 1, 0, scoreWithTrend, text_color=totalColor, text_size=fontSizeHeader)
 
-        // Row 1: Score + Trend
-        scoreStr = str.tostring(displayScore, "#.#") + " " + (displayUptrend ? "↑" : "↓")
-        table.cell(dashboardMobile, 0, 1, "Score", text_color=color.white, text_size=fontSize)
-        table.cell(dashboardMobile, 1, 1, scoreStr, text_color=totalColor, text_size=fontSize)
+        // Row 1: Score Progress Bar (centered, -8 to +8)
+        scoreBar = f_centeredBar(displayScore, 8.0, 5)
+        table.cell(dashboardMobile, 0, 1, scoreBar, text_color=totalColor, text_size=fontSize, text_halign=text.align_center)
+        table.cell(dashboardMobile, 1, 1, "", text_color=color.gray, text_size=fontSize)
 
-        // Row 2: Quality + Drawdown (v7.0)
+        // Row 2: Quality + DD + Div
         qualityColor = displayBuyQuality == "A" ? color.lime : displayBuyQuality == "B" ? color.yellow : color.gray
-        qualityStr = displayBuyQuality + " (" + str.tostring(displayPosFactor) + "F)"
-        ddStr = displayDrawdown >= 5 ? str.tostring(displayDrawdown, "#.#") + "%" : "-"
+        qualityBar = f_progressBar(displayBuyQuality == "A" ? 3 : displayBuyQuality == "B" ? 2 : 1, 0, 3, 3)
+        ddBar = f_progressBar(math.min(displayDrawdown, 20), 0, 20, 4)
         ddColor = displayDrawdown >= 10 ? color.lime : displayDrawdown >= 5 ? color.yellow : color.gray
-        table.cell(dashboardMobile, 0, 2, qualityStr, text_color=qualityColor, text_size=fontSize)
-        table.cell(dashboardMobile, 1, 2, "DD:" + ddStr, text_color=ddColor, text_size=fontSize)
+        divIcon = displayBullishDiv ? "💎↑" : displayBearishDiv ? "💎↓" : "·"
+        table.cell(dashboardMobile, 0, 2, displayBuyQuality + qualityBar + " " + divIcon, text_color=qualityColor, text_size=fontSize)
+        bonusStr = displayDrawdownBonus > 0 ? "+" + str.tostring(int(displayDrawdownBonus)) : ""
+        table.cell(dashboardMobile, 1, 2, ddBar + bonusStr, text_color=ddColor, text_size=fontSize)
 
-        // Row 3: Mode + Divergence
-        divStatus = displayBullishDiv ? "💎↑" : displayBearishDiv ? "💎↓" : "-"
-        table.cell(dashboardMobile, 0, 3, thresholdModeText, text_color=thresholdColor, text_size=fontSize)
-        table.cell(dashboardMobile, 1, 3, divStatus, text_color=divColor, text_size=fontSize)
+        // Row 3: Three Market Status (SPY QQQ IWM)
+        resonanceIcon = aggBottomEdge ? "🔥" : aggTopEdge ? "❄️" : ""
+        marketLine = "SPY" + spyStatus + " QQQ" + qqqStatus + " IWM" + iwmStatus + " " + resonanceIcon
+        table.cell(dashboardMobile, 0, 3, marketLine, text_color=color.white, text_size=fontSize)
+        table.cell(dashboardMobile, 1, 3, thresholdModeText, text_color=thresholdColor, text_size=fontSize)
     else
-        // Full Mode: 13-row × 3-col display (v7.0 adds Quality + Drawdown rows)
-        var table dashboard = table.new(dashboardPos, 3, 13, bgcolor=color.new(color.black, 80), frame_color=color.gray, frame_width=1, border_color=color.gray, border_width=1)
+        //==========================================================
+        // v7.2 Full Mode: 8-row × 3-col with Progress Bars
+        //==========================================================
+        var table dashboard = table.new(dashboardPos, 3, 8, bgcolor=color.new(color.black, 85), frame_color=frameColor, frame_width=2, border_color=color.new(color.gray, 70), border_width=1)
         
-        // Header
-        table.cell(dashboard, 0, 0, "Factor", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 0, "Score", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 2, 0, "Weight", text_color=color.white, text_size=fontSize)
-        
-        // RSI
+        // Row 0: Signal Header (spans feel via larger text)
+        table.cell(dashboard, 0, 0, signalEmoji, text_color=totalColor, text_size=fontSizeHeader)
+        table.cell(dashboard, 1, 0, signalText, text_color=totalColor, text_size=fontSizeHeader)
+        scoreStr = str.tostring(displayScore, "#.#") + (displayUptrend ? " ↑" : " ↓")
+        table.cell(dashboard, 2, 0, scoreStr, text_color=totalColor, text_size=fontSizeHeader)
+
+        // Row 1: Score Progress Bar (centered bar showing position from -8 to +8)
+        scoreBar = f_centeredBar(displayScore, 8.0, 6)
+        table.cell(dashboard, 0, 1, "-8", text_color=color.red, text_size=size.tiny)
+        table.cell(dashboard, 1, 1, scoreBar, text_color=totalColor, text_size=fontSize)
+        table.cell(dashboard, 2, 1, "+8", text_color=color.lime, text_size=size.tiny)
+
+        // Row 2-3: Factor Progress Bars (2x2 grid layout)
+        // RSI + Vol on row 2
         rsiColor = displayRsiS > 0 ? color.lime : displayRsiS < 0 ? color.red : color.gray
-        table.cell(dashboard, 0, 1, "RSI", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 1, str.tostring(displayRsiS, "#.#"), text_color=rsiColor, text_size=fontSize)
-        table.cell(dashboard, 2, 1, "1x", text_color=color.gray, text_size=fontSize)
-        
-        // FI (50D) or ADD (Intraday)
+        rsiBar = f_progressBar(displayRsiS + 2, 0, 4, 5)  // -2 to +2 → 0 to 4
+        volColor = displayVolS > 0 ? color.lime : displayVolS < 0 ? color.red : color.gray
+        volBar = f_progressBar(displayVolS + 1, 0, 2, 3)  // -1 to +1 → 0 to 2
+        table.cell(dashboard, 0, 2, "RSI", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 2, rsiBar + " " + str.tostring(displayRsiS, "#"), text_color=rsiColor, text_size=fontSize)
+        table.cell(dashboard, 2, 2, "Vol " + volBar + str.tostring(displayVolS, "#"), text_color=volColor, text_size=fontSize)
+
+        // FI/ADD + TW on row 3
         if intradayMode
             addColor = displayAddS > 0 ? color.lime : displayAddS < 0 ? color.red : color.gray
-            table.cell(dashboard, 0, 2, "ADD", text_color=color.white, text_size=fontSize)
-            table.cell(dashboard, 1, 2, str.tostring(displayAddS, "#.#"), text_color=addColor, text_size=fontSize)
-            table.cell(dashboard, 2, 2, "Intraday", text_color=color.aqua, text_size=fontSize)
+            addBar = f_progressBar(displayAddS + 3, 0, 6, 5)  // -3 to +3 → 0 to 6
+            table.cell(dashboard, 0, 3, "ADD", text_color=color.white, text_size=fontSize)
+            table.cell(dashboard, 1, 3, addBar + " " + str.tostring(displayAddS, "#"), text_color=addColor, text_size=fontSize)
         else
             fiColor = displayFiS > 0 ? color.lime : displayFiS < 0 ? color.red : color.gray
-            table.cell(dashboard, 0, 2, "FI(50D)", text_color=color.white, text_size=fontSize)
-            table.cell(dashboard, 1, 2, str.tostring(displayFiS, "#.#"), text_color=fiColor, text_size=fontSize)
-            table.cell(dashboard, 2, 2, "Bottom", text_color=color.lime, text_size=fontSize)
-        
-        // TW (20D)
+            fiBar = f_progressBar(displayFiS + 3, 0, 6, 5)  // -3 to +3 → 0 to 6
+            table.cell(dashboard, 0, 3, "FI", text_color=color.white, text_size=fontSize)
+            table.cell(dashboard, 1, 3, fiBar + " " + str.tostring(displayFiS, "#"), text_color=fiColor, text_size=fontSize)
         twColor = displayTwS > 0 ? color.lime : displayTwS < 0 ? color.red : color.gray
-        table.cell(dashboard, 0, 3, "TW(20D)", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 3, str.tostring(displayTwS, "#.#"), text_color=twColor, text_size=fontSize)
-        table.cell(dashboard, 2, 3, "Top", text_color=color.red, text_size=fontSize)
-        
-        // Volume
-        volColor = displayVolS > 0 ? color.lime : displayVolS < 0 ? color.red : color.gray
-        table.cell(dashboard, 0, 4, "Vol", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 4, str.tostring(displayVolS, "#.#"), text_color=volColor, text_size=fontSize)
-        table.cell(dashboard, 2, 4, "1x", text_color=color.gray, text_size=fontSize)
-        
-        // Trend
+        twBar = f_progressBar(displayTwS + 2, 0, 4, 4)  // -2 to +2 → 0 to 4
+        table.cell(dashboard, 2, 3, "TW " + twBar + str.tostring(displayTwS, "#"), text_color=twColor, text_size=fontSize)
+
+        // Row 4: Trend + Divergence
         trendText = displayUptrend ? "↑ UP" : "↓ DOWN"
         trendColor = displayUptrend ? color.lime : color.red
-        table.cell(dashboard, 0, 5, "Trend", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 5, trendText, text_color=trendColor, text_size=fontSize)
-        table.cell(dashboard, 2, 5, str.tostring(trendMALen) + "MA", text_color=color.gray, text_size=fontSize)
-        
-        // Threshold Mode
-        table.cell(dashboard, 0, 6, "Mode", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 6, thresholdModeText, text_color=thresholdColor, text_size=fontSize)
-        table.cell(dashboard, 2, 6, "Vol=" + str.tostring(vol_fast, "#.#"), text_color=color.gray, text_size=fontSize)
-        
-        // Divergence
-        divText = displayBullishDiv ? "BULL 💎" : displayBearishDiv ? "BEAR 💎" : "-"
-        table.cell(dashboard, 0, 7, "Div", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 7, divText, text_color=divColor, text_size=fontSize)
-        table.cell(dashboard, 2, 7, useDivergence ? "ON" : "OFF", text_color=useDivergence ? color.lime : color.gray, text_size=fontSize)
+        divText = displayBullishDiv ? "💎 BULL" : displayBearishDiv ? "💎 BEAR" : "–"
+        table.cell(dashboard, 0, 4, "Trend", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 4, trendText, text_color=trendColor, text_size=fontSize)
+        table.cell(dashboard, 2, 4, divText, text_color=divColor, text_size=fontSize)
 
-        // Lookback Health
-        health_text = health_ok ? "✓ OK" : "⚠ Check"
-        health_color = health_ok ? color.lime : color.orange
-        table.cell(dashboard, 0, 8, "Lookback", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 8, str.tostring(adaptiveLookback), text_color=color.aqua, text_size=fontSize)
-        table.cell(dashboard, 2, 8, health_text, text_color=health_color, text_size=fontSize)
-
-        // Cooldown
-        cooldown_color = useDynamicCooldown ? color.aqua : color.yellow
-        cooldown_text = useDynamicCooldown ? "Dyn" : "Fix"
-        table.cell(dashboard, 0, 9, "Cooldown", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 9, str.tostring(cooldownBars) + "b", text_color=cooldown_color, text_size=fontSize)
-        table.cell(dashboard, 2, 9, cooldown_text, text_color=cooldown_color, text_size=fontSize)
-
-        // v7.0: Signal Quality
+        // Row 5: Quality Progress + Factors
         qualityColor = displayBuyQuality == "A" ? color.lime : displayBuyQuality == "B" ? color.yellow : color.gray
-        qualityText = displayBuyQuality + " Grade"
-        factorText = str.tostring(displayPosFactor) + "/4 Factors"
-        table.cell(dashboard, 0, 10, "Quality", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 10, qualityText, text_color=qualityColor, text_size=fontSize)
-        table.cell(dashboard, 2, 10, factorText, text_color=qualityColor, text_size=fontSize)
+        qualityBar = f_progressBar(displayBuyQuality == "A" ? 3 : displayBuyQuality == "B" ? 2 : 1, 0, 3, 5)
+        factorText = str.tostring(displayPosFactor) + "/4"
+        table.cell(dashboard, 0, 5, "Quality", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 5, qualityBar + " " + displayBuyQuality, text_color=qualityColor, text_size=fontSize)
+        table.cell(dashboard, 2, 5, factorText + " Factors", text_color=qualityColor, text_size=fontSize)
 
-        // v7.0: Drawdown Bonus
+        // Row 6: Drawdown Progress + Bonus
         ddColor = displayDrawdown >= 10 ? color.lime : displayDrawdown >= 5 ? color.yellow : color.gray
-        ddText = displayDrawdown >= 1 ? str.tostring(displayDrawdown, "#.#") + "%" : "-"
-        bonusText = displayDrawdownBonus > 0 ? "+" + str.tostring(displayDrawdownBonus, "#.#") : "-"
-        table.cell(dashboard, 0, 11, "Drawdown", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 11, ddText, text_color=ddColor, text_size=fontSize)
-        table.cell(dashboard, 2, 11, bonusText, text_color=ddColor, text_size=fontSize)
+        ddBar = f_progressBar(math.min(displayDrawdown, 20), 0, 20, 6)  // 0-20% range
+        ddText = displayDrawdown >= 1 ? str.tostring(displayDrawdown, "#.#") + "%" : "–"
+        bonusText = displayDrawdownBonus > 0 ? "+" + str.tostring(int(displayDrawdownBonus)) : ""
+        table.cell(dashboard, 0, 6, "DD", text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 6, ddBar + " " + ddText, text_color=ddColor, text_size=fontSize)
+        table.cell(dashboard, 2, 6, bonusText, text_color=ddColor, text_size=fontSize)
 
-        // Total (v7.0: includes drawdown + resonance bonus) - LAST ROW
-        resonanceText = displayResonanceBonus > 0 ? "🔥+" + str.tostring(displayResonanceBonus, "#.#") : ""
-        totalText = str.tostring(displayScore, "#.#") + resonanceText
-        table.cell(dashboard, 0, 12, "Total", text_color=color.white, text_size=fontSizeHeader)
-        table.cell(dashboard, 1, 12, totalText, text_color=totalColor, text_size=fontSizeHeader)
-        table.cell(dashboard, 2, 12, signalText, text_color=totalColor, text_size=fontSize)
+        // Row 7: Three Market Resonance Status
+        resonanceIcon = aggBottomEdge ? " 🔥" : aggTopEdge ? " ❄️" : ""
+        table.cell(dashboard, 0, 7, "SPY" + spyStatus, text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 1, 7, "QQQ" + qqqStatus, text_color=color.white, text_size=fontSize)
+        table.cell(dashboard, 2, 7, "IWM" + iwmStatus + resonanceIcon, text_color=color.white, text_size=fontSize)
 
 //========================
 // Smart Alert V2 (Enhanced from Adaptive RSI Pro)
