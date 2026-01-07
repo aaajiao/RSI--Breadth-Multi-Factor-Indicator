@@ -4,73 +4,66 @@
 
 ## Project Overview
 
-**Language**: Pine Script v6 (TradingView)  
-**Type**: Quantitative trading indicator for US market timing  
-**Main File**: `RSI+` (1135 lines)  
-**Current Version**: v7.0  
-**Documentation**: `README.md` (bilingual: English/Chinese)
+| Item | Value |
+|------|-------|
+| **Language** | Pine Script v6 (TradingView) |
+| **Main File** | `RSI+` (~1200 lines) |
+| **Version** | v7.2 |
+| **Purpose** | US market timing for SPY, QQQ, IWM |
 
-Multi-factor scoring system combining RSI, Market Breadth, Volume Ratio, and Divergence for SPY, QQQ, and IWM signals.
+Multi-factor scoring: RSI + Market Breadth (TW/FI) + Volume Ratio + Divergence.
 
 ---
 
-## Build / Lint / Test Commands
+## Build / Lint / Test
 
-Pine Script has **no local build system**. All validation happens in TradingView.
+Pine Script has **no local build/test system**. Validation is manual in TradingView.
 
 ```bash
-# Validation workflow:
-# 1. Copy RSI+ contents to TradingView Pine Editor
+# Workflow:
+# 1. Copy RSI+ to TradingView Pine Editor
 # 2. Click "Add to Chart" - errors appear in console
-# 3. Visual verification on SPY/QQQ/IWM charts
+# 3. Visual verification on SPY/QQQ/IWM daily charts
 
-# Git operations (bilingual commit messages preferred)
-git status
+# Git (bilingual commits preferred)
 git add RSI+
-git commit -m "feat: add feature / 新增功能"
+git commit -m "feat: description / 中文描述"
 ```
 
-### Testing Checklist
-
-- [ ] Code compiles without errors in TradingView
-- [ ] Signals render correctly on SPY, QQQ, IWM charts
-- [ ] Dashboard displays properly (Full/Mobile modes)
-- [ ] Alerts fire with correct message format
-- [ ] Signal Zone backgrounds appear correctly (v7.0)
-- [ ] README updated if user-facing features changed
+### Validation Checklist
+- [ ] Compiles without errors in TradingView
+- [ ] Signals render on SPY, QQQ, IWM charts
+- [ ] Dashboard displays (Full/Mobile modes)
+- [ ] Alerts fire correctly
+- [ ] README updated if user-facing changes
 
 ---
 
-## Code Style Guidelines
+## Code Style
 
 ### File Structure
-
 ```pine
 //@version=6
 indicator("Name", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
-// SECTION HEADER (ALL CAPS, BORDERED WITH =)
+// SECTION HEADER (ALL CAPS, = BORDER)
 //==============================================================================
 
 //========================
 // Subsection Header
 //========================
-
-// Implementation...
 ```
 
 ### Naming Conventions
-
-| Element | Convention | Example |
-|---------|------------|---------|
-| Functions | `f_` prefix, camelCase | `f_rsiScore()`, `f_signalQuality()` |
-| Variables | camelCase | `spyScore`, `driverRSI` |
+| Element | Pattern | Example |
+|---------|---------|---------|
+| Functions | `f_` prefix + camelCase | `f_rsiScore()`, `f_signalQuality()` |
+| Variables | camelCase | `spyScore`, `displayUptrend` |
 | Input groups | `grp` prefix | `grpMode`, `grpOptimize` |
-| Parameters | Descriptive camelCase | `rsiLen`, `useDrawdownBonus` |
+| Function params | `_` prefix | `_rsi`, `_lookback` |
 
-### Input Parameter Style
-
+### Input Parameters
 ```pine
 grpOptimize = "v7.0 Optimizations 胜率优化"
 
@@ -79,10 +72,9 @@ useSignalQuality = input.bool(true, "Signal Quality Filter 信号质量过滤",
     tooltip="仅触发A/B级信号\nOnly trigger A/B grade signals")
 ```
 
-### Function Patterns
-
+### Functions
 ```pine
-// Single return
+// Single return - always end with result variable
 f_rsiScore(_rsi, _os1, _os2, _ob1, _ob2) =>
     score = 0.0
     if not na(_rsi)
@@ -90,9 +82,9 @@ f_rsiScore(_rsi, _os1, _os2, _ob1, _ob2) =>
             score := 2
     score
 
-// Multi-return (tuple)
+// Multi-return tuple
 f_signalQuality(_rsiS, _fiS, _twS, _volS, _addS, _intraday) =>
-    // ... calculations
+    // calculations...
     [buyQuality, sellQuality, positiveFactors, negativeFactors]
 ```
 
@@ -100,106 +92,90 @@ f_signalQuality(_rsiS, _fiS, _twS, _volS, _addS, _intraday) =>
 
 ## Pine Script Patterns
 
-### Security Requests
-
+### Security Requests (CRITICAL)
 ```pine
+// Always use barmerge.gaps_off + barmerge.lookahead_off
 f_sec(_sym, _expr) =>
     request.security(_sym, tfData, _expr, barmerge.gaps_off, barmerge.lookahead_off)
-
-f_secDaily(_sym, _expr) =>
-    request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_off)
 ```
 
 ### State Management
-
 ```pine
-// Persistent across bars
-var int spyLastBot = na
+var int spyLastBot = na              // Persistent across bars
+varip int buy_alert_level_sent = 0   // Intrabar persistence (for alerts)
 
-// Intrabar persistence (for alerts)
-varip int buy_alert_level_sent = 0
-
-// Reset on new bar
 if barstate.isnew
-    buy_alert_level_sent := 0
+    buy_alert_level_sent := 0        // Reset on new bar
 ```
 
-### Error Handling
-
+### Error Handling (MANDATORY)
 ```pine
-// Always check na values
-if not na(_rsi)
+if not na(_rsi)                      // Always check na
     // safe to use
 
-// Clamp lookback to available history
-safe_lookback = math.max(10, math.min(_lookback, bar_index - 1))
-
-// Division by zero protection
-ratio = _dvol > 0 ? _uvol / _dvol : 0
+safe_lookback = math.max(10, math.min(_lookback, bar_index - 1))  // Clamp lookback
+ratio = _dvol > 0 ? _uvol / _dvol : 0                             // Division guard
 ```
 
 ---
 
-## v7.0 Key Features
+## Signal Reference
+
+| Score | Emoji | Signal | Condition |
+|:-----:|:-----:|--------|-----------|
+| ≥ 6 | 🚀 | PANIC LOW | Extreme oversold + panic |
+| ≥ 4 | 📈 | BUY ZONE | Multi-factor buy |
+| DIV | 💎 | DIVERGENCE | Z-Score threshold |
+| ≤ -4↑ | ⭐ | ELEVATED | Overbought + uptrend |
+| ≤ -4↓ | ⚡ | CAUTION | Overbought + downtrend |
+| ≤ -6↓ | ⚠️ | REDUCE | Extreme overbought |
+| 2+ mkts | 🔥 | RESONANCE BUY | Multi-market bullish |
+| 2+ mkts | ❄️ | RESONANCE RISK | Multi-market bearish |
+
+---
+
+## v7.x Key Features
 
 | Feature | Function | Purpose |
 |---------|----------|---------|
-| Signal Quality Filter | `f_signalQuality()` | A/B grade only (2+ factors aligned) |
-| Drawdown Bonus | `f_drawdownBonus()` | +1/+2/+3 at 5/10/20% drawdown |
-| Divergence Assist | `f_divergenceAssisted()` | Edge signals boosted by divergence |
-| Tiered Resonance | `f_resonanceStrength()` | Sync > Window > Single market |
-| Signal Zone | `showSignalZone` input | Background highlighting |
-
----
-
-## Signal Emoji Reference
-
-| Signal | Emoji | Condition |
-|--------|-------|-----------|
-| Panic Low | 🚀 | score ≥ 6 |
-| Buy Zone | 📈 | score ≥ 4 |
-| Divergence | 💎 | Z-Score threshold |
-| Elevated | ⭐ | score ≤ -4 + uptrend |
-| Caution | ⚡ | score ≤ -4 + downtrend |
-| Reduce | ⚠️ | score ≤ -6 + downtrend |
-| Resonance Buy | 🔥 | 2+ markets in buy zone |
-| Resonance Risk | ❄️ | 2+ markets in risk zone |
+| Signal Quality | `f_signalQuality()` | A/B/C grade (factor alignment) |
+| Drawdown Bonus | `f_drawdownBonus()` | +1/+2/+3 at 5/10/20% DD |
+| Divergence Assist | `f_divergenceAssisted()` | Boost edge signals |
+| Tiered Resonance | `f_resonanceStrength()` | Sync > Window > Single |
+| Progress Bar | `f_progressBar()`, `f_centeredBar()` | v7.2 visual dashboard |
 
 ---
 
 ## Documentation Standards
 
-**Bilingual requirement** - ALL docs must have English/Chinese:
-
-```markdown
-## Feature / 功能
-
-English description.
-
-中文描述。
+**Bilingual required** - ALL user-facing text must have English/Chinese:
+```pine
+"Signal Mode 信号模式"                           // Input labels
+tooltip="仅触发A/B级信号\nOnly trigger A/B grade"  // Tooltips with \n
 ```
 
 ---
 
+## Common Pitfalls
+
+| Issue | Solution |
+|-------|----------|
+| `na` errors | Always check `not na(value)` before use |
+| Lookahead bias | Use `barmerge.lookahead_off` |
+| History overflow | Clamp with `math.min(_lookback, bar_index - 1)` |
+| Division by zero | Guard with `_denom > 0 ? ... : 0` |
+| Alert spam | Use `varip` + reset on `barstate.isnew` |
+
+---
+
 ## Quick Reference
-
 ```pine
-// Indicator declaration
 //@version=6
-indicator("RSI+Breadth Multi-Factor v7.0", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.2", overlay=true, max_labels_count=500, max_bars_back=1100)
 
-// Function pattern
-f_functionName(_param1, _param2) =>
-    result = 0.0
-    // logic
-    result
-
-// Multi-return
-[val1, val2] = f_multiReturn(args)
-
-// Security call
-data = request.security(symbol, timeframe, expr, barmerge.gaps_off, barmerge.lookahead_off)
-
-// Alert (V2 Smart Alert)
-alert(msg, alert.freq_once_per_bar)
+// Function: f_name(_param) => result
+// Multi-return: [a, b] = f_name(args)
+// Security: request.security(sym, tf, expr, barmerge.gaps_off, barmerge.lookahead_off)
+// Alert: alert(msg, alert.freq_once_per_bar)
+// Table: table.new(position, cols, rows, bgcolor, frame_color, ...)
 ```
