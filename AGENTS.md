@@ -13,31 +13,25 @@
 
 Multi-factor scoring: RSI + Market Breadth (TW/FI) + Volume Ratio + Divergence.
 
----
-
 ## Build / Lint / Test
 
-Pine Script has **no local build/test system**. Validation is manual in TradingView.
+**Pine Script has NO local build/test system.** Validation is manual in TradingView.
 
 ```bash
 # Workflow:
 # 1. Copy RSI+ to TradingView Pine Editor
 # 2. Click "Add to Chart" - errors appear in console
-# 3. Visual verification on SPY/QQQ/IWM daily charts
+# 3. Visual verification on SPY/QQQ/IWM daily
 
 # Git (bilingual commits preferred)
-git add RSI+
 git commit -m "feat: description / 中文描述"
 ```
 
 ### Validation Checklist
-- [ ] Compiles without errors in TradingView
+- [ ] Compiles in TradingView without errors
 - [ ] Signals render on SPY, QQQ, IWM charts
 - [ ] Dashboard displays (Full/Mobile modes)
-- [ ] Alerts fire correctly
 - [ ] README updated if user-facing changes
-
----
 
 ## Code Style
 
@@ -56,14 +50,15 @@ indicator("Name", overlay=true, max_labels_count=500, max_bars_back=1100)
 ```
 
 ### Naming Conventions
+
 | Element | Pattern | Example |
 |---------|---------|---------|
-| Functions | `f_` prefix + camelCase | `f_rsiScore()`, `f_signalQuality()` |
+| Functions | `f_` prefix + camelCase | `f_rsiScore()` |
 | Variables | camelCase | `spyScore`, `displayUptrend` |
 | Input groups | `grp` prefix | `grpMode`, `grpOptimize` |
 | Function params | `_` prefix | `_rsi`, `_lookback` |
 
-### Input Parameters
+### Input Parameters (Bilingual Required)
 ```pine
 grpOptimize = "v7.0 Optimizations 胜率优化"
 
@@ -74,7 +69,7 @@ useSignalQuality = input.bool(true, "Signal Quality Filter 信号质量过滤",
 
 ### Functions
 ```pine
-// Single return - always end with result variable
+// Single return - end with result variable
 f_rsiScore(_rsi, _os1, _os2, _ob1, _ob2) =>
     score = 0.0
     if not na(_rsi)
@@ -83,26 +78,27 @@ f_rsiScore(_rsi, _os1, _os2, _ob1, _ob2) =>
     score
 
 // Multi-return tuple
-f_signalQuality(_rsiS, _fiS, _twS, _volS, _addS, _intraday) =>
-    // calculations...
-    [buyQuality, sellQuality, positiveFactors, negativeFactors]
+f_signalQuality(_rsiS, _fiS, _twS, _volS) =>
+    positiveFactors = (_rsiS > 0 ? 1 : 0) + (_fiS > 0 ? 1 : 0)
+    buyQuality = positiveFactors >= 3 ? "A" : positiveFactors >= 2 ? "B" : "C"
+    [buyQuality, positiveFactors]
 ```
 
----
+## Critical Pine Script Patterns
 
-## Pine Script Patterns
-
-### Security Requests (CRITICAL)
+### Security Requests (ALWAYS use both flags)
 ```pine
-// Always use barmerge.gaps_off + barmerge.lookahead_off
 f_sec(_sym, _expr) =>
     request.security(_sym, tfData, _expr, barmerge.gaps_off, barmerge.lookahead_off)
+
+f_secDaily(_sym, _expr) =>
+    request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_off)
 ```
 
 ### State Management
 ```pine
 var int spyLastBot = na              // Persistent across bars
-varip int buy_alert_level_sent = 0   // Intrabar persistence (for alerts)
+varip int buy_alert_level_sent = 0   // Intrabar persistence (alerts)
 
 if barstate.isnew
     buy_alert_level_sent := 0        // Reset on new bar
@@ -113,11 +109,9 @@ if barstate.isnew
 if not na(_rsi)                      // Always check na
     // safe to use
 
-safe_lookback = math.max(10, math.min(_lookback, bar_index - 1))  // Clamp lookback
+safe_lookback = math.max(10, math.min(_lookback, bar_index - 1))  // Clamp
 ratio = _dvol > 0 ? _uvol / _dvol : 0                             // Division guard
 ```
-
----
 
 ## Signal Reference
 
@@ -129,46 +123,41 @@ ratio = _dvol > 0 ? _uvol / _dvol : 0                             // Division gu
 | ≤ -4↑ | ⭐ | ELEVATED | Overbought + uptrend |
 | ≤ -4↓ | ⚡ | CAUTION | Overbought + downtrend |
 | ≤ -6↓ | ⚠️ | REDUCE | Extreme overbought |
-| 2+ mkts | 🔥 | RESONANCE BUY | Multi-market bullish |
-| 2+ mkts | ❄️ | RESONANCE RISK | Multi-market bearish |
+| 2+ mkts | 🔥 | RESONANCE | Multi-market aligned |
 
----
+## v7.x Key Functions
 
-## v7.x Key Features
-
-| Feature | Function | Purpose |
-|---------|----------|---------|
-| Signal Quality | `f_signalQuality()` | A/B/C grade (factor alignment) |
-| Drawdown Bonus | `f_drawdownBonus()` | +1/+2/+3 at 5/10/20% DD |
-| Divergence Assist | `f_divergenceAssisted()` | Boost edge signals |
-| Tiered Resonance | `f_resonanceStrength()` | Sync > Window > Single |
-| Progress Bar | `f_progressBar()`, `f_centeredBar()` | v7.2 visual dashboard |
-
----
-
-## Documentation Standards
-
-**Bilingual required** - ALL user-facing text must have English/Chinese:
-```pine
-"Signal Mode 信号模式"                           // Input labels
-tooltip="仅触发A/B级信号\nOnly trigger A/B grade"  // Tooltips with \n
-```
-
----
+| Function | Purpose |
+|----------|---------|
+| `f_signalQuality()` | A/B/C grade (factor alignment) |
+| `f_drawdownBonus()` | +1/+2/+3 at 5/10/20% DD |
+| `f_divergenceAssisted()` | Boost edge signals |
+| `f_resonanceStrength()` | Tiered multi-market sync |
+| `f_progressBar()` | v7.2 visual dashboard bars |
+| `f_adaptiveThresholds()` | Dynamic RSI levels |
+| `f_dynamicCooldown()` | Vol-adjusted signal spacing |
 
 ## Common Pitfalls
 
 | Issue | Solution |
 |-------|----------|
-| `na` errors | Always check `not na(value)` before use |
-| Lookahead bias | Use `barmerge.lookahead_off` |
+| `na` runtime errors | Check `not na(value)` before use |
+| Lookahead bias | Use `barmerge.lookahead_off` always |
 | History overflow | Clamp with `math.min(_lookback, bar_index - 1)` |
 | Division by zero | Guard with `_denom > 0 ? ... : 0` |
 | Alert spam | Use `varip` + reset on `barstate.isnew` |
+| Wrong timeframe | Use `f_secDaily()` for 252-day calcs |
 
----
+## Documentation Standards
+
+**ALL user-facing text must be bilingual (English/Chinese):**
+```pine
+"Signal Mode 信号模式"                           // Input labels
+tooltip="仅触发A/B级信号\nOnly trigger A/B grade"  // Tooltips (use \n)
+```
 
 ## Quick Reference
+
 ```pine
 //@version=6
 indicator("RSI+Breadth Multi-Factor v7.2", overlay=true, max_labels_count=500, max_bars_back=1100)
