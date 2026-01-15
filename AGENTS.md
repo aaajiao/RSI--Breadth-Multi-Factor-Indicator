@@ -8,7 +8,7 @@
 |------|-------|
 | **Language** | Pine Script v6 (TradingView) |
 | **Main File** | `RSI+` (~1200 lines) |
-| **Version** | v7.2 |
+| **Version** | v7.3 |
 | **Purpose** | US market timing for SPY, QQQ, IWM |
 
 Multi-factor scoring: RSI + Market Breadth (TW/FI) + Volume Ratio + Divergence.
@@ -133,7 +133,8 @@ ratio = _dvol > 0 ? _uvol / _dvol : 0                             // Division gu
 | `f_drawdownBonus()` | +1/+2/+3 at 5/10/20% DD |
 | `f_divergenceAssisted()` | Boost edge signals |
 | `f_resonanceStrength()` | Tiered multi-market sync |
-| `f_progressBar()` | v7.2 visual dashboard bars |
+| `f_progressBar()` | v7.3 visual dashboard bars |
+| `f_centeredBar()` | v7.3 centered score bar (-8 to +8) |
 | `f_adaptiveThresholds()` | Dynamic RSI levels |
 | `f_dynamicCooldown()` | Vol-adjusted signal spacing |
 
@@ -147,6 +148,38 @@ ratio = _dvol > 0 ? _uvol / _dvol : 0                             // Division gu
 | Division by zero | Guard with `_denom > 0 ? ... : 0` |
 | Alert spam | Use `varip` + reset on `barstate.isnew` |
 | Wrong timeframe | Use `f_secDaily()` for 252-day calcs |
+| **Multi-line ternary** | **Keep on single line (no line breaks)** |
+| **if/else variable scope** | **Declare variable before if, use `:=` inside** |
+
+### Syntax Gotchas (CRITICAL)
+
+**1. Multi-line expressions cause "end of line" errors:**
+```pine
+// ❌ WRONG - breaks on multiple lines
+status = condA ? "A" : 
+         condB ? "B" : "C"
+
+// ✅ CORRECT - single line
+status = condA ? "A" : condB ? "B" : "C"
+```
+
+**2. Variables in if/else blocks have local scope:**
+```pine
+// ❌ WRONG - "Undeclared identifier" error
+if condition
+    myVar = "value1"
+else
+    myVar = "value2"
+doSomething(myVar)  // ERROR!
+
+// ✅ CORRECT - declare first, assign with :=
+string myVar = ""
+if condition
+    myVar := "value1"
+else
+    myVar := "value2"
+doSomething(myVar)  // OK
+```
 
 ## Documentation Standards
 
@@ -160,7 +193,7 @@ tooltip="仅触发A/B级信号\nOnly trigger A/B grade"  // Tooltips (use \n)
 
 ```pine
 //@version=6
-indicator("RSI+Breadth Multi-Factor v7.2", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.3", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 // Function: f_name(_param) => result
 // Multi-return: [a, b] = f_name(args)

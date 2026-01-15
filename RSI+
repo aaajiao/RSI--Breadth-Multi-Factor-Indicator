@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v7.2", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.3", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -183,8 +183,8 @@ dashboardPosition = input.string("Top Right", "Panel Position 面板位置",
     tooltip="面板显示位置 Dashboard location on chart")
 
 dashboardFontSize = input.string("Small", "Font Size 字体大小",
-    options=["Tiny", "Small", "Normal", "Large"], group=grp6,
-    tooltip="Tiny: 最小 | Small: 默认 | Normal: 中等 | Large: 最大")
+    options=["Small", "Normal"], group=grp6,
+    tooltip="Small: 小 | Normal: 中等")
 
 showSignalZone = input.bool(true, "Show Signal Zone 显示信号区间", group=grp6,
     tooltip="信号触发后背景高亮直到回归HOLD\nHighlight background from signal trigger until back to HOLD\n绿色=买入区间 | 红色=卖出区间")
@@ -941,6 +941,18 @@ displayElevated = showSpy ? spyElevated : showQqq ? qqqElevated : showIwm ? iwmE
 
 thresholdModeText = useAdaptive ? "Adaptive" : "Fixed"
 
+//========================
+// v7.3 Dark Theme Colors (深色主题配色)
+//========================
+c_bg_header = color.rgb(26, 26, 46)        // #1a1a2e 标题区深蓝黑
+c_bg_row    = color.rgb(15, 15, 26, 50)    // #0f0f1a 普通行近黑
+c_bg_buy    = color.rgb(10, 61, 46, 60)    // #0a3d2e 买入信号深绿
+c_bg_sell   = color.rgb(61, 10, 10, 60)    // #3d0a0a 卖出信号深红
+c_bg_hold   = color.rgb(40, 40, 50, 60)    // 中性状态深灰
+c_bg_wait   = color.rgb(61, 51, 10, 60)    // #3d330a 等待状态深黄
+c_text_dim  = color.rgb(136, 136, 136)     // #888 标签灰
+c_text_bright = color.rgb(255, 255, 255)   // #fff 数值白
+
 // Position mapping 位置映射
 f_getPosition(_pos) =>
     switch _pos
@@ -985,121 +997,106 @@ signalEmoji = displayScore >= adjStrongBotThreshold ? "🚀" :
 divColor = displayBullishDiv ? color.aqua : displayBearishDiv ? color.fuchsia : color.gray
 thresholdColor = useAdaptive ? color.aqua : color.yellow
 
+//========================
+// v7.3 Filter Status Detection (过滤状态检测)
+//========================
+// 检测信号是否被过滤，以及过滤原因
+// WAIT: 买入区但被过滤（高波动/动量未确认）
+// HOLD: 卖出区但被过滤（上升趋势/低波动）
+// NO TRADE: 熊市趋势过滤
+
+// 买入侧过滤检测：评分达到买入阈值但信号质量不足
+isBuyZoneFiltered = displayScore >= adjBotThreshold and not (displayBotTrig or displayBotSignal)
+// 卖出侧过滤检测：评分达到卖出阈值但因上升趋势被过滤
+isSellZoneFiltered = displayScore <= adjTopThreshold and displayUptrend and useTrendFilter
+// 熊市过滤检测：处于下降趋势且启用趋势过滤
+isBearMarketFiltered = not displayUptrend and useTrendFilter and displayScore >= adjBotThreshold and displayScore < adjStrongBotThreshold
+
+// 过滤状态文本和颜色
+filterStatus = isBearMarketFiltered ? "🚫" : isBuyZoneFiltered ? "✋ WAIT" : isSellZoneFiltered ? "☕ HOLD" : "👀"
+filterColor = isBearMarketFiltered ? color.gray : isBuyZoneFiltered ? color.yellow : isSellZoneFiltered ? color.orange : color.gray
+hasFilterStatus = isBearMarketFiltered or isBuyZoneFiltered or isSellZoneFiltered
+
+// v7.3 Dynamic background color (动态背景色)
+signalBgColor = displayScore >= adjBotThreshold ? c_bg_buy : displayScore <= adjTopThreshold ? c_bg_sell : c_bg_hold
+
 // v7.2: Prepare market status indicators for three markets
 spyStatus = f_marketStatus(spyScore, adjBotThreshold, adjTopThreshold)
 qqqStatus = f_marketStatus(qqqScore, adjBotThreshold, adjTopThreshold)
 iwmStatus = f_marketStatus(iwmScore, adjBotThreshold, adjTopThreshold)
 
-// Dynamic frame color based on signal state
-frameColor = displayScore >= adjBotThreshold ? color.new(color.lime, 50) : 
-             displayScore <= adjTopThreshold ? color.new(color.red, 50) : 
-             color.new(color.gray, 50)
+// v7.3: frameColor removed - using borderless dark theme
 
 if showDashboard and barstate.islast
     if useMobileMode
         //==========================================================
-        // v7.2 Mobile Mode: 4-row × 2-col with Progress Bar
+        // v7.3 Mobile Mode: 2-row (信号+分数 / 过滤状态)
+        // Row 0: 🚀 PANIC LOW +6.5↑
+        // Row 1: ✋ WAIT / ☕ HOLD / 🚫 (或空)
         //==========================================================
-        var table dashboardMobile = table.new(dashboardPos, 2, 4, bgcolor=color.new(color.black, 85), frame_color=frameColor, frame_width=2, border_color=color.new(color.gray, 70), border_width=1)
+        var table dashboardMobile = table.new(dashboardPos, 1, 2, bgcolor=c_bg_row, frame_width=0, border_width=0)
 
-        // Row 0: Signal Emoji + Signal Text + Score
-        scoreWithTrend = str.tostring(displayScore, "#.#") + (displayUptrend ? "↑" : "↓")
-        table.cell(dashboardMobile, 0, 0, signalEmoji + " " + signalText, text_color=totalColor, text_size=fontSizeHeader)
-        table.cell(dashboardMobile, 1, 0, scoreWithTrend, text_color=totalColor, text_size=fontSizeHeader)
+        // Row 0: Signal + Score + Trend (信号 + 分数 + 趋势)
+        scoreWithTrend = str.tostring(displayScore, "+#.#;-#.#") + (displayUptrend ? "↑" : "↓")
+        signalLine = signalEmoji + " " + signalText + " " + scoreWithTrend
+        table.cell(dashboardMobile, 0, 0, signalLine, bgcolor=signalBgColor, text_color=totalColor, text_size=fontSizeHeader, text_halign=text.align_left)
 
-        // Row 1: Score Progress Bar (centered, -8 to +8)
-        scoreBar = f_centeredBar(displayScore, 8.0, 5)
-        table.cell(dashboardMobile, 0, 1, scoreBar, text_color=totalColor, text_size=fontSize, text_halign=text.align_center)
-        table.cell(dashboardMobile, 1, 1, "", text_color=color.gray, text_size=fontSize)
-
-        // Row 2: Quality + DD + Div
-        qualityColor = displayBuyQuality == "A" ? color.lime : displayBuyQuality == "B" ? color.yellow : color.gray
-        qualityBar = f_progressBar(displayBuyQuality == "A" ? 3 : displayBuyQuality == "B" ? 2 : 1, 0, 3, 3)
-        ddBar = f_progressBar(math.min(displayDrawdown, 20), 0, 20, 4)
-        ddColor = displayDrawdown >= 10 ? color.lime : displayDrawdown >= 5 ? color.yellow : color.gray
-        divIcon = displayBullishDiv ? "💎↑" : displayBearishDiv ? "💎↓" : "·"
-        table.cell(dashboardMobile, 0, 2, displayBuyQuality + qualityBar + " " + divIcon, text_color=qualityColor, text_size=fontSize)
-        bonusStr = displayDrawdownBonus > 0 ? "+" + str.tostring(int(displayDrawdownBonus)) : ""
-        table.cell(dashboardMobile, 1, 2, ddBar + bonusStr, text_color=ddColor, text_size=fontSize)
-
-        // Row 3: Three Market Status (SPY QQQ IWM)
-        resonanceIcon = aggBottomEdge ? "🔥" : aggTopEdge ? "❄️" : ""
-        marketLine = "SPY" + spyStatus + " QQQ" + qqqStatus + " IWM" + iwmStatus + " " + resonanceIcon
-        table.cell(dashboardMobile, 0, 3, marketLine, text_color=color.white, text_size=fontSize)
-        table.cell(dashboardMobile, 1, 3, thresholdModeText, text_color=thresholdColor, text_size=fontSize)
+        // Row 1: Filter Status (过滤状态 - 仅在有过滤时显示)
+        table.cell(dashboardMobile, 0, 1, filterStatus, bgcolor=hasFilterStatus ? c_bg_wait : c_bg_row, text_color=filterColor, text_size=fontSize, text_halign=text.align_left)
     else
         //==========================================================
-        // v7.2 Full Mode: 8-row × 3-col with Progress Bars
+        // v7.3 Full Mode: 7-row × 1-col Compact Dark Theme
+        // 单列紧凑设计 + 深色主题 + 无线框
         //==========================================================
-        var table dashboard = table.new(dashboardPos, 3, 8, bgcolor=color.new(color.black, 85), frame_color=frameColor, frame_width=2, border_color=color.new(color.gray, 70), border_width=1)
+        var table dashboard = table.new(dashboardPos, 1, 7, bgcolor=c_bg_row, frame_width=0, border_width=0)
         
-        // Row 0: Signal Header (spans feel via larger text)
-        table.cell(dashboard, 0, 0, signalEmoji, text_color=totalColor, text_size=fontSizeHeader)
-        table.cell(dashboard, 1, 0, signalText, text_color=totalColor, text_size=fontSizeHeader)
-        scoreStr = str.tostring(displayScore, "#.#") + (displayUptrend ? " ↑" : " ↓")
-        table.cell(dashboard, 2, 0, scoreStr, text_color=totalColor, text_size=fontSizeHeader)
+        // Row 0: Signal + Score (信号 + 分数)
+        scoreStr = str.tostring(displayScore, "+#.#;-#.#") + (displayUptrend ? "↑" : "↓")
+        row0 = signalEmoji + " " + signalText + " " + scoreStr
+        table.cell(dashboard, 0, 0, row0, bgcolor=signalBgColor, text_color=totalColor, text_size=fontSizeHeader, text_halign=text.align_left)
 
-        // Row 1: Score Progress Bar (centered bar showing position from -8 to +8)
-        scoreBar = f_centeredBar(displayScore, 8.0, 6)
-        table.cell(dashboard, 0, 1, "-8", text_color=color.red, text_size=size.tiny)
-        table.cell(dashboard, 1, 1, scoreBar, text_color=totalColor, text_size=fontSize)
-        table.cell(dashboard, 2, 1, "+8", text_color=color.lime, text_size=size.tiny)
+        // Row 1: Score Progress Bar (分数条)
+        scoreBar = f_centeredBar(displayScore, 8.0, 8)
+        table.cell(dashboard, 0, 1, scoreBar, bgcolor=signalBgColor, text_color=totalColor, text_size=fontSize, text_halign=text.align_left)
 
-        // Row 2-3: Factor Progress Bars (2x2 grid layout)
-        // RSI + Vol on row 2
+        // Row 2: RSI & Vol (合并)
         rsiColor = displayRsiS > 0 ? color.lime : displayRsiS < 0 ? color.red : color.gray
-        rsiBar = f_progressBar(displayRsiS + 2, 0, 4, 5)  // -2 to +2 → 0 to 4
+        rsiBar = f_progressBar(displayRsiS + 2, 0, 4, 4)
         volColor = displayVolS > 0 ? color.lime : displayVolS < 0 ? color.red : color.gray
-        volBar = f_progressBar(displayVolS + 1, 0, 2, 3)  // -1 to +1 → 0 to 2
-        table.cell(dashboard, 0, 2, "RSI", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 2, rsiBar + " " + str.tostring(displayRsiS, "#"), text_color=rsiColor, text_size=fontSize)
-        table.cell(dashboard, 2, 2, "Vol " + volBar + str.tostring(displayVolS, "#"), text_color=volColor, text_size=fontSize)
+        volBar = f_progressBar(displayVolS + 2, 0, 4, 4)
+        row2 = "RSI" + rsiBar + str.tostring(displayRsiS, "#") + " Vol" + volBar + str.tostring(displayVolS, "#")
+        table.cell(dashboard, 0, 2, row2, bgcolor=c_bg_row, text_color=c_text_dim, text_size=fontSize, text_halign=text.align_left)
 
-        // FI/ADD + TW on row 3
-        if intradayMode
-            addColor = displayAddS > 0 ? color.lime : displayAddS < 0 ? color.red : color.gray
-            addBar = f_progressBar(displayAddS + 3, 0, 6, 5)  // -3 to +3 → 0 to 6
-            table.cell(dashboard, 0, 3, "ADD", text_color=color.white, text_size=fontSize)
-            table.cell(dashboard, 1, 3, addBar + " " + str.tostring(displayAddS, "#"), text_color=addColor, text_size=fontSize)
-        else
-            fiColor = displayFiS > 0 ? color.lime : displayFiS < 0 ? color.red : color.gray
-            fiBar = f_progressBar(displayFiS + 3, 0, 6, 5)  // -3 to +3 → 0 to 6
-            table.cell(dashboard, 0, 3, "FI", text_color=color.white, text_size=fontSize)
-            table.cell(dashboard, 1, 3, fiBar + " " + str.tostring(displayFiS, "#"), text_color=fiColor, text_size=fontSize)
+        // Row 3: FI/ADD & TW (合并)
         twColor = displayTwS > 0 ? color.lime : displayTwS < 0 ? color.red : color.gray
-        twBar = f_progressBar(displayTwS + 2, 0, 4, 4)  // -2 to +2 → 0 to 4
-        table.cell(dashboard, 2, 3, "TW " + twBar + str.tostring(displayTwS, "#"), text_color=twColor, text_size=fontSize)
+        twBar = f_progressBar(displayTwS + 3, 0, 6, 4)
+        string row3 = ""
+        if intradayMode
+            addBar = f_progressBar(displayAddS + 3, 0, 6, 4)
+            row3 := "ADD" + addBar + str.tostring(displayAddS, "#") + " TW" + twBar + str.tostring(displayTwS, "#")
+        else
+            fiBar = f_progressBar(displayFiS + 3, 0, 6, 4)
+            row3 := "FI" + fiBar + str.tostring(displayFiS, "#") + " TW" + twBar + str.tostring(displayTwS, "#")
+        table.cell(dashboard, 0, 3, row3, bgcolor=c_bg_row, text_color=c_text_dim, text_size=fontSize, text_halign=text.align_left)
 
-        // Row 4: Trend + Divergence
-        trendText = displayUptrend ? "↑ UP" : "↓ DOWN"
+        // Row 4: Trend + Divergence + Quality (趋势+背离+质量)
+        trendText = displayUptrend ? "↑UP" : "↓DN"
         trendColor = displayUptrend ? color.lime : color.red
-        divText = displayBullishDiv ? "💎 BULL" : displayBearishDiv ? "💎 BEAR" : "–"
-        table.cell(dashboard, 0, 4, "Trend", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 4, trendText, text_color=trendColor, text_size=fontSize)
-        table.cell(dashboard, 2, 4, divText, text_color=divColor, text_size=fontSize)
+        divText = displayBullishDiv ? "💎B" : displayBearishDiv ? "💎S" : ""
+        qualityText = displayBuyQuality + str.tostring(displayPosFactor) + "/4"
+        row4 = trendText + " " + divText + " " + qualityText
+        table.cell(dashboard, 0, 4, row4, bgcolor=c_bg_row, text_color=trendColor, text_size=fontSize, text_halign=text.align_left)
 
-        // Row 5: Quality Progress + Factors
-        qualityColor = displayBuyQuality == "A" ? color.lime : displayBuyQuality == "B" ? color.yellow : color.gray
-        qualityBar = f_progressBar(displayBuyQuality == "A" ? 3 : displayBuyQuality == "B" ? 2 : 1, 0, 3, 5)
-        factorText = str.tostring(displayPosFactor) + "/4"
-        table.cell(dashboard, 0, 5, "Quality", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 5, qualityBar + " " + displayBuyQuality, text_color=qualityColor, text_size=fontSize)
-        table.cell(dashboard, 2, 5, factorText + " Factors", text_color=qualityColor, text_size=fontSize)
-
-        // Row 6: Drawdown Progress + Bonus
-        ddColor = displayDrawdown >= 10 ? color.lime : displayDrawdown >= 5 ? color.yellow : color.gray
-        ddBar = f_progressBar(math.min(displayDrawdown, 20), 0, 20, 6)  // 0-20% range
-        ddText = displayDrawdown >= 1 ? str.tostring(displayDrawdown, "#.#") + "%" : "–"
+        // Row 5: DD + Filter Status (回撤+过滤状态)
+        ddText = displayDrawdown >= 1 ? "DD" + str.tostring(displayDrawdown, "#") + "%" : ""
         bonusText = displayDrawdownBonus > 0 ? "+" + str.tostring(int(displayDrawdownBonus)) : ""
-        table.cell(dashboard, 0, 6, "DD", text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 6, ddBar + " " + ddText, text_color=ddColor, text_size=fontSize)
-        table.cell(dashboard, 2, 6, bonusText, text_color=ddColor, text_size=fontSize)
+        row5 = ddText + bonusText + " " + filterStatus
+        table.cell(dashboard, 0, 5, row5, bgcolor=c_bg_row, text_color=filterColor, text_size=fontSize, text_halign=text.align_left)
 
-        // Row 7: Three Market Resonance Status
-        resonanceIcon = aggBottomEdge ? " 🔥" : aggTopEdge ? " ❄️" : ""
-        table.cell(dashboard, 0, 7, "SPY" + spyStatus, text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 1, 7, "QQQ" + qqqStatus, text_color=color.white, text_size=fontSize)
-        table.cell(dashboard, 2, 7, "IWM" + iwmStatus + resonanceIcon, text_color=color.white, text_size=fontSize)
+        // Row 6: Three Market Status + Resonance (三市场+共振)
+        resonanceIcon = aggBottomEdge ? "🔥" : aggTopEdge ? "❄️" : ""
+        row6 = "SPY" + spyStatus + " QQQ" + qqqStatus + " IWM" + iwmStatus + " " + resonanceIcon
+        table.cell(dashboard, 0, 6, row6, bgcolor=c_bg_header, text_color=c_text_bright, text_size=fontSize, text_halign=text.align_left)
 
 //========================
 // Smart Alert V2 (Enhanced from Adaptive RSI Pro)
