@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v7.2
+# RSI+ Breadth Multi-Factor Indicator v7.3
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -10,7 +10,7 @@
 
 ### Overview
 
-RSI+ is a comprehensive quantitative indicator designed for US market timing (SPY, QQQ, IWM). It combines **RSI**, **Market Breadth**, **Volume Ratio**, and **Divergence** into a single composite score to identify high-probability reversal points. Version 7.2 features a **Progress Bar Dashboard** for intuitive visual analysis.
+RSI+ is a comprehensive quantitative indicator designed for US market timing (SPY, QQQ, IWM). It combines **RSI**, **Market Breadth**, **Volume Ratio**, and **Divergence** into a single composite score to identify high-probability reversal points. Version 7.3 features a **Dark Theme Dashboard** with filter status display.
 
 ### Quick Start Guide
 
@@ -37,27 +37,41 @@ RSI+ is a comprehensive quantitative indicator designed for US market timing (SP
 
 **Resonance**: 🔥 Buy (2+ markets bullish) | ❄️ Risk (2+ markets bearish)
 
-### Dashboard Guide (v7.2)
+### Dashboard Guide (v7.3)
 
-**Visual Elements**:
+**Visual Design**:
+- **Dark Theme**: Deep blue-black background, no borders
+- **Dynamic Background**: Green (buy) / Red (sell) / Gray (neutral)
 - `█` Filled bar | `░` Empty bar
 - 🟢 Buy Zone | 🟡 Neutral | 🔴 Risk Zone
-- Frame color: Green (buy) / Red (sell) / Gray (neutral)
 
-**Full Mode (8 rows)**:
+**Filter Status** (NEW in v7.3):
 
-| Row | Content | Description |
-|:---:|---------|-------------|
-| 0 | `🚀 PANIC LOW +6.5↑` | Signal emoji + name + score with trend |
-| 1 | `░░░░░░│██████████` | Score bar: left = negative, right = positive |
-| 2 | `RSI █████ +2  Vol ███ +1` | RSI and Volume factor bars |
-| 3 | `FI █████ +3   TW ████ +1` | Market Breadth factor bars (FI/ADD + TW) |
-| 4 | `Trend ↑UP   💎 BULL` | Trend direction + Divergence status |
-| 5 | `Quality █████ A  3/4` | Signal quality grade + aligned factors |
-| 6 | `DD ██████░░ 8.2% +2` | Drawdown % bar + bonus score |
-| 7 | `SPY🟢 QQQ🟢 IWM🟡 🔥` | Three-market status + resonance |
+| Status | Display | Condition | Meaning |
+|--------|---------|-----------|---------|
+| **Normal** | `👀` | No filter active | Watching, ready to act |
+| **WAIT** | `✋ WAIT` | Buy zone but filtered | Score OK but risk high, wait |
+| **HOLD** | `☕ HOLD` | Sell zone but uptrend | Score OK but trend strong, hold |
+| **NO TRADE** | `🚫` | Bear market filter | Capital protection |
 
-**Mobile Mode (4 rows)**: Compact version with score bar + three-market resonance.
+**Full Mode (7 rows, single column)**:
+
+| Row | Content |
+|:---:|---------|
+| 0 | `🚀 PANIC LOW +6.5↑` |
+| 1 | `░░░░░│██████████` |
+| 2 | `RSI████+2 Vol███+1` |
+| 3 | `FI█████+3 TW████+1` |
+| 4 | `↑UP 💎B A3/4` |
+| 5 | `DD8%+2 👀` |
+| 6 | `SPY🟢QQQ🟢IWM🟡🔥` |
+
+**Mobile Mode (2 rows)**:
+
+| Row | Content |
+|:---:|---------|
+| 0 | `🚀 PANIC LOW +6.5↑` |
+| 1 | `👀` / `✋ WAIT` / `☕ HOLD` / `🚫` |
 
 ### Recommended Settings
 
@@ -68,6 +82,8 @@ RSI+ is a comprehensive quantitative indicator designed for US market timing (SP
 | **Intraday** | `Standard` | `Auto` | `Normal`| `8.0` |
 
 ### Changelog
+
+**v7.3** - Dark theme dashboard redesign, Full mode (8×2→7×1), Mobile mode (4→2 rows), filter status display, borderless design.
 
 **v7.2** - Progress bar dashboard redesign (13→8 rows), three-market resonance display, dynamic frame colors.
 
@@ -81,7 +97,7 @@ RSI+ is a comprehensive quantitative indicator designed for US market timing (SP
 
 ### 概述
 
-RSI+ 是专为美股指数（SPY, QQQ, IWM）设计的量化择时系统。结合 **RSI**、**市场广度**、**成交量比** 和 **背离** 计算综合评分，识别高胜率反转点。v7.2 版本引入 **进度条可视化面板**，让分析更直观。
+RSI+ 是专为美股指数（SPY, QQQ, IWM）设计的量化择时系统。结合 **RSI**、**市场广度**、**成交量比** 和 **背离** 计算综合评分，识别高胜率反转点。v7.3 版本引入 **深色主题面板** 和 **过滤状态显示**。
 
 ### 快速入门
 
@@ -103,27 +119,41 @@ RSI+ 是专为美股指数（SPY, QQQ, IWM）设计的量化择时系统。结�
 
 **共振**：🔥 共振买入 (2+市场看多) | ❄️ 共振风险 (2+市场看空)
 
-### 面板指南 (v7.2)
+### 面板指南 (v7.3)
 
-**视觉元素**：
+**视觉设计**：
+- **深色主题**：深蓝黑背景，无边框
+- **动态背景**：绿色(买入) / 红色(卖出) / 灰色(中性)
 - `█` 填充格 | `░` 空格
 - 🟢 买入区 | 🟡 中性 | 🔴 风险区
-- 边框颜色：绿色(买入) / 红色(卖出) / 灰色(中性)
 
-**完整模式 (8行)**：
+**过滤状态** (v7.3 新增)：
 
-| 行 | 内容 | 说明 |
-|:--:|------|------|
-| 0 | `🚀 PANIC LOW +6.5↑` | 信号图标 + 名称 + 分数趋势 |
-| 1 | `░░░░░░│██████████` | 分数条：左负右正，中线为0 |
-| 2 | `RSI █████ +2  Vol ███ +1` | RSI 和成交量因子条 |
-| 3 | `FI █████ +3   TW ████ +1` | 市场广度因子条 (FI/ADD + TW) |
-| 4 | `Trend ↑UP   💎 BULL` | 趋势方向 + 背离状态 |
-| 5 | `Quality █████ A  3/4` | 信号质量等级 + 同向因子数 |
-| 6 | `DD ██████░░ 8.2% +2` | 回撤百分比条 + 加分 |
-| 7 | `SPY🟢 QQQ🟢 IWM🟡 🔥` | 三市场状态 + 共振指示 |
+| 状态 | 显示 | 条件 | 含义 |
+|------|------|------|------|
+| **正常** | `👀` | 无过滤 | 观望中，等待机会 |
+| **WAIT** | `✋ WAIT` | 买入区但被过滤 | 评分达标但风险高，等待 |
+| **HOLD** | `☕ HOLD` | 卖出区但上升趋势 | 评分达标但趋势强，持有 |
+| **NO TRADE** | `🚫` | 熊市趋势过滤 | 保护本金 |
 
-**精简模式 (4行)**：压缩版，含分数条 + 三市场共振。
+**完整模式 (7行单列)**：
+
+| 行 | 内容 |
+|:--:|------|
+| 0 | `🚀 PANIC LOW +6.5↑` |
+| 1 | `░░░░░│██████████` |
+| 2 | `RSI████+2 Vol███+1` |
+| 3 | `FI█████+3 TW████+1` |
+| 4 | `↑UP 💎B A3/4` |
+| 5 | `DD8%+2 👀` |
+| 6 | `SPY🟢QQQ🟢IWM🟡🔥` |
+
+**精简模式 (2行)**：
+
+| 行 | 内容 |
+|:--:|------|
+| 0 | `🚀 PANIC LOW +6.5↑` |
+| 1 | `👀` / `✋ WAIT` / `☕ HOLD` / `🚫` |
 
 ### 推荐设置
 
@@ -134,6 +164,8 @@ RSI+ 是专为美股指数（SPY, QQQ, IWM）设计的量化择时系统。结�
 | **日内** | `Standard` | `Auto` | `Normal`| `8.0` |
 
 ### 更新日志
+
+**v7.3** - 深色主题面板重构，完整模式 (8行2列→7行单列)，精简模式 (4→2行)，过滤状态显示，无边框设计。
 
 **v7.2** - 进度条面板重构 (13→8行)，三市场共振显示，动态边框颜色。
 
@@ -149,4 +181,4 @@ This indicator is for educational purposes only. Past performance does not guara
 
 本指标仅供教育用途。历史表现不代表未来收益。
 
-**Version**: 7.2 | **Pine Script**: v6 | **Updated**: 2025-01-05
+**Version**: 7.3 | **Pine Script**: v6 | **Updated**: 2025-01-15
