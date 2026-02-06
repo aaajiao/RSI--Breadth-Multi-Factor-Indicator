@@ -27,3 +27,5 @@ Thumbs.db
 # AI Session Data
 .claude/
 .opencode/
+.claude/settings.local.json
+.claude/*.local.*

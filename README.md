@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v7.3
+# RSI+ Breadth Multi-Factor Indicator v7.4
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -10,7 +10,7 @@
 
 ### Overview
 
-RSI+ is a comprehensive quantitative indicator designed for US market timing (SPY, QQQ, IWM). It combines **RSI**, **Market Breadth**, **Volume Ratio**, and **Divergence** into a single composite score to identify high-probability reversal points. Version 7.3 features a **Dark Theme Dashboard** with filter status display.
+RSI+ is a comprehensive quantitative indicator designed for US market timing (SPY, QQQ, IWM). It combines **RSI**, **Market Breadth**, **Volume Ratio**, and **Divergence** into a single composite score to identify high-probability reversal points. Version 7.4 fixes **alert timing** and adds **Live Alert Data** for intraday charts.
 
 ### Quick Start Guide
 
@@ -37,7 +37,7 @@ RSI+ is a comprehensive quantitative indicator designed for US market timing (SP
 
 **Resonance**: 🔥 Buy (2+ markets bullish) | ❄️ Risk (2+ markets bearish)
 
-### Dashboard Guide (v7.3)
+### Dashboard Guide (v7.4)
 
 **Visual Design**:
 - **Dark Theme**: Deep blue-black background, no borders
@@ -45,7 +45,7 @@ RSI+ is a comprehensive quantitative indicator designed for US market timing (SP
 - `█` Filled bar | `░` Empty bar
 - 🟢 Buy Zone | 🟡 Neutral | 🔴 Risk Zone
 
-**Filter Status** (NEW in v7.3):
+**Filter Status** (NEW in v7.4):
 
 | Status | Display | Condition | Meaning |
 |--------|---------|-----------|---------|
@@ -83,6 +83,8 @@ RSI+ is a comprehensive quantitative indicator designed for US market timing (SP
 
 ### Changelog
 
+**v7.4** - Alert timing fix: default alert level Lv3→Lv1, live daily data for intraday charts (`f_secDailyLive`), user toggle for live data, enhanced alert tooltip.
+
 **v7.3** - Dark theme dashboard redesign, Full mode (8×2→7×1), Mobile mode (4→2 rows), filter status display, borderless design.
 
 **v7.2** - Progress bar dashboard redesign (13→8 rows), three-market resonance display, dynamic frame colors.
@@ -97,7 +99,7 @@ RSI+ is a comprehensive quantitative indicator designed for US market timing (SP
 
 ### 概述
 
-RSI+ 是专为美股指数（SPY, QQQ, IWM）设计的量化择时系统。结合 **RSI**、**市场广度**、**成交量比** 和 **背离** 计算综合评分，识别高胜率反转点。v7.3 版本引入 **深色主题面板** 和 **过滤状态显示**。
+RSI+ 是专为美股指数（SPY, QQQ, IWM）设计的量化择时系统。结合 **RSI**、**市场广度**、**成交量比** 和 **背离** 计算综合评分，识别高胜率反转点。v7.4 修复了 **警报时效性** 并为日内图表添加 **实时警报数据**。
 
 ### 快速入门
 
@@ -119,7 +121,7 @@ RSI+ 是专为美股指数（SPY, QQQ, IWM）设计的量化择时系统。结�
 
 **共振**：🔥 共振买入 (2+市场看多) | ❄️ 共振风险 (2+市场看空)
 
-### 面板指南 (v7.3)
+### 面板指南 (v7.4)
 
 **视觉设计**：
 - **深色主题**：深蓝黑背景，无边框
@@ -127,7 +129,7 @@ RSI+ 是专为美股指数（SPY, QQQ, IWM）设计的量化择时系统。结�
 - `█` 填充格 | `░` 空格
 - 🟢 买入区 | 🟡 中性 | 🔴 风险区
 
-**过滤状态** (v7.3 新增)：
+**过滤状态** (v7.4 新增)：
 
 | 状态 | 显示 | 条件 | 含义 |
 |------|------|------|------|
@@ -165,6 +167,8 @@ RSI+ 是专为美股指数（SPY, QQQ, IWM）设计的量化择时系统。结�
 
 ### 更新日志
 
+**v7.4** - 修复警报时效：默认等级 Lv3→Lv1，日内图实时日线数据（`f_secDailyLive`），Live Data 开关，增强等级说明。
+
 **v7.3** - 深色主题面板重构，完整模式 (8行2列→7行单列)，精简模式 (4→2行)，过滤状态显示，无边框设计。
 
 **v7.2** - 进度条面板重构 (13→8行)，三市场共振显示，动态边框颜色。
@@ -181,4 +185,4 @@ This indicator is for educational purposes only. Past performance does not guara
 
 本指标仅供教育用途。历史表现不代表未来收益。
 
-**Version**: 7.3 | **Pine Script**: v6 | **Updated**: 2025-01-15
+**Version**: 7.4 | **Pine Script**: v6 | **Updated**: 2026-02-06

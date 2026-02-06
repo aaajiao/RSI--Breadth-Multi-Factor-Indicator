@@ -7,8 +7,8 @@
 | Item | Value |
 |------|-------|
 | **Language** | Pine Script v6 (TradingView) |
-| **Main File** | `RSI+` (~1200 lines) |
-| **Version** | v7.3 |
+| **Main File** | `RSI+` (~1224 lines) |
+| **Version** | v7.4 |
 | **Purpose** | US market timing for SPY, QQQ, IWM |
 
 Multi-factor scoring: RSI + Market Breadth (TW/FI) + Volume Ratio + Divergence.
@@ -93,6 +93,10 @@ f_sec(_sym, _expr) =>
 
 f_secDaily(_sym, _expr) =>
     request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_off)
+
+// v7.4: Intraday live daily data (lookahead_on for developing bar)
+f_secDailyLive(_sym, _expr) =>
+    request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_on)
 ```
 
 ### State Management
@@ -133,17 +137,18 @@ ratio = _dvol > 0 ? _uvol / _dvol : 0                             // Division gu
 | `f_drawdownBonus()` | +1/+2/+3 at 5/10/20% DD |
 | `f_divergenceAssisted()` | Boost edge signals |
 | `f_resonanceStrength()` | Tiered multi-market sync |
-| `f_progressBar()` | v7.3 visual dashboard bars |
-| `f_centeredBar()` | v7.3 centered score bar (-8 to +8) |
+| `f_progressBar()` | v7.4 visual dashboard bars |
+| `f_centeredBar()` | v7.4 centered score bar (-8 to +8) |
 | `f_adaptiveThresholds()` | Dynamic RSI levels |
 | `f_dynamicCooldown()` | Vol-adjusted signal spacing |
+| `f_secDailyLive()` | v7.4 intraday developing daily data |
 
 ## Common Pitfalls
 
 | Issue | Solution |
 |-------|----------|
 | `na` runtime errors | Check `not na(value)` before use |
-| Lookahead bias | Use `barmerge.lookahead_off` always |
+| Lookahead bias | Use `lookahead_off` (except `f_secDailyLive` for intraday) |
 | History overflow | Clamp with `math.min(_lookback, bar_index - 1)` |
 | Division by zero | Guard with `_denom > 0 ? ... : 0` |
 | Alert spam | Use `varip` + reset on `barstate.isnew` |
@@ -193,11 +198,12 @@ tooltip="仅触发A/B级信号\nOnly trigger A/B grade"  // Tooltips (use \n)
 
 ```pine
 //@version=6
-indicator("RSI+Breadth Multi-Factor v7.3", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.4", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 // Function: f_name(_param) => result
 // Multi-return: [a, b] = f_name(args)
 // Security: request.security(sym, tf, expr, barmerge.gaps_off, barmerge.lookahead_off)
-// Alert: alert(msg, alert.freq_once_per_bar)
+// Live data: request.security(sym, "D", expr, barmerge.gaps_off, barmerge.lookahead_on)
+// Alert: alert(msg, alert.freq_all)
 // Table: table.new(position, cols, rows, bgcolor, frame_color, ...)
 ```

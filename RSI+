@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v7.3", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.4", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -71,6 +71,8 @@ rsiLen = input.int(14, "RSI Length RSI周期", minval=2, group=grp1)
 // 自动获取图表周期
 tfData = timeframe.period
 intradayMode = timeframe.isintraday
+useLiveData = input.bool(true, "Live Alert Data 实时警报数据", group=grp1,
+    tooltip="日内图使用实时日线数据触发警报（推荐）\nIntraday: use developing daily data for timely alerts\n关闭=仅收盘确认后触发 Off=confirmed data only")
 
 //========================
 // Fixed Thresholds (固定阈值 - 可配置)
@@ -254,6 +256,11 @@ f_ohlc(_sym) =>
 
 f_secDaily(_sym, _expr) =>
     request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_off)
+
+// 日内图获取当日developing数据 (lookahead_on使盘中可用，日线图不需要)
+// Intraday: get developing daily data (lookahead_on for timely alerts)
+f_secDailyLive(_sym, _expr) =>
+    request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_on)
 
 f_rsi_from_close(_c) =>
     ta.rsi(_c, rsiLen)
@@ -541,6 +548,19 @@ dvol = f_secDaily(dvolSym, close)
 uvolq = f_secDaily(uvolqSym, close)
 dvolq = f_secDaily(dvolqSym, close)
 
+// 日内图实时日线数据 (developing daily values for intraday charts)
+// Intraday live daily data: uses lookahead_on to get current day's developing values
+s5tw_live = (intradayMode and useLiveData) ? f_secDailyLive(s5twSym, close) : s5tw
+s5fi_live = (intradayMode and useLiveData) ? f_secDailyLive(s5fiSym, close) : s5fi
+nctw_live = (intradayMode and useLiveData) ? f_secDailyLive(nctwSym, close) : nctw
+ncfi_live = (intradayMode and useLiveData) ? f_secDailyLive(ncfiSym, close) : ncfi
+r2tw_live = (intradayMode and useLiveData) ? f_secDailyLive(r2twSym, close) : r2tw
+r2fi_live = (intradayMode and useLiveData) ? f_secDailyLive(r2fiSym, close) : r2fi
+uvol_live = (intradayMode and useLiveData) ? f_secDailyLive(uvolSym, close) : uvol
+dvol_live = (intradayMode and useLiveData) ? f_secDailyLive(dvolSym, close) : dvol
+uvolq_live = (intradayMode and useLiveData) ? f_secDailyLive(uvolqSym, close) : uvolq
+dvolq_live = (intradayMode and useLiveData) ? f_secDailyLive(dvolqSym, close) : dvolq
+
 // Intraday breadth proxy
 addValue = f_sec(addSym, close)
 
@@ -639,9 +659,9 @@ health_ok = health_sample_coverage and health_stat_valid and health_distribution
 //========================
 // Calculate Scores per Market
 //========================
-[spyScoreRaw, spyRsiS, spyFiS, spyTwS, spyVolS, spyAddS] = f_totalScore(spyRSI, s5tw, s5fi, uvol, dvol, addValue, intradayMode, spyOS1, spyOS2, spyOB1, spyOB2)
-[qqqScoreRaw, qqqRsiS, qqqFiS, qqqTwS, qqqVolS, qqqAddS] = f_totalScore(qqqRSI, nctw, ncfi, uvolq, dvolq, addValue, intradayMode, qqqOS1, qqqOS2, qqqOB1, qqqOB2)
-[iwmScoreRaw, iwmRsiS, iwmFiS, iwmTwS, iwmVolS, iwmAddS] = f_totalScore(iwmRSI, r2tw, r2fi, uvol, dvol, addValue, intradayMode, iwmOS1, iwmOS2, iwmOB1, iwmOB2)
+[spyScoreRaw, spyRsiS, spyFiS, spyTwS, spyVolS, spyAddS] = f_totalScore(spyRSI, s5tw_live, s5fi_live, uvol_live, dvol_live, addValue, intradayMode, spyOS1, spyOS2, spyOB1, spyOB2)
+[qqqScoreRaw, qqqRsiS, qqqFiS, qqqTwS, qqqVolS, qqqAddS] = f_totalScore(qqqRSI, nctw_live, ncfi_live, uvolq_live, dvolq_live, addValue, intradayMode, qqqOS1, qqqOS2, qqqOB1, qqqOB2)
+[iwmScoreRaw, iwmRsiS, iwmFiS, iwmTwS, iwmVolS, iwmAddS] = f_totalScore(iwmRSI, r2tw_live, r2fi_live, uvol_live, dvol_live, addValue, intradayMode, iwmOS1, iwmOS2, iwmOB1, iwmOB2)
 
 //========================
 // v7.0: Apply Drawdown Bonus (回撤加分)
@@ -1105,9 +1125,9 @@ if showDashboard and barstate.islast
 grpAlert = "Alerts 警报"
 enable_smart_alert = input.bool(true, "Enable Smart Alert 启用智能警报", group=grpAlert, 
     tooltip="V2智能警报：信号等级+升级触发+K线内去重\nV2 Smart Alert: signal levels + upgrade trigger + dedup")
-min_alert_level_str = input.string("🔥 Lv3 Resonance", "Min Alert Level 最小警报等级",
+min_alert_level_str = input.string("📈 Lv1 Buy Zone", "Min Alert Level 最小警报等级",
     options=["📈 Lv1 Buy Zone", "💎 Lv2 Divergence", "🔥 Lv3 Resonance", "🚀 Lv4 Panic", "🚀🔥 Lv5 Combo"],
-    group=grpAlert, tooltip="Only receive alerts >= this level")
+    group=grpAlert, tooltip="Lv1=买入/卖出区间(常见) | Lv2=背离(中等)\nLv3=共振(较少) | Lv4=恐慌/减仓(很少) | Lv5=组合(极少)\n═══════════════════════\nLv1=Buy/Sell zone(common) | Lv2=Divergence(medium)\nLv3=Resonance(rare) | Lv4=Panic/Reduce(very rare) | Lv5=Combo(extreme)")
 min_alert_level = min_alert_level_str == "📈 Lv1 Buy Zone" ? 1 : min_alert_level_str == "💎 Lv2 Divergence" ? 2 : min_alert_level_str == "🔥 Lv3 Resonance" ? 3 : min_alert_level_str == "🚀 Lv4 Panic" ? 4 : 5
 
 // 信号条件 (自动检测图表标的)
