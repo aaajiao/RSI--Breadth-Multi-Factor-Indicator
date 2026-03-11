@@ -1,92 +1,270 @@
 # AGENTS.md - RSI+ Breadth Multi-Factor Indicator
 
-> Guidelines for AI coding agents working in this Pine Script repository.
+> Working rules for AI coding agents in this Pine Script repository.
 
 ## Project Overview
 
 | Item | Value |
 |------|-------|
-| **Language** | Pine Script v6 (TradingView) |
-| **Main File** | `RSI+` (~1224 lines) |
-| **Version** | v7.4 |
-| **Purpose** | US market timing for SPY, QQQ, IWM |
+| **Language** | Pine Script v6 |
+| **Main file** | `RSI+` |
+| **Current version** | `v7.4` |
+| **Primary markets** | `SPY`, `QQQ`, `IWM` |
+| **Use case** | US index market timing |
 
-Multi-factor scoring: RSI + Market Breadth (TW/FI) + Volume Ratio + Divergence.
+The script is a multi-factor indicator that combines:
 
-## Build / Lint / Test
+- RSI
+- Daily breadth (`TW`, `FI`)
+- Intraday breadth (`ADD`, replacing daily breadth scoring in intraday mode)
+- Up/Down volume ratio
+- Divergence
+- Trend filter
+- Drawdown bonus
+- Multi-market resonance
+- Smart alerts
 
-**Pine Script has NO local build/test system.** Validation is manual in TradingView.
+## Repository Files
 
-```bash
-# Workflow:
-# 1. Copy RSI+ to TradingView Pine Editor
-# 2. Click "Add to Chart" - errors appear in console
-# 3. Visual verification on SPY/QQQ/IWM daily
+| File | Role |
+|------|------|
+| `RSI+` | Source of truth for behavior |
+| `README.md` | User-facing documentation; must match the script |
+| `CLAUDE.md` | Claude Code entrypoint that imports this file |
+| `AGENTS.md` | Agent-facing implementation guidance |
 
-# Git (bilingual commits preferred)
-git commit -m "feat: description / 中文描述"
-```
+If script behavior changes, update `README.md` and `AGENTS.md` in the same change.
 
-### Validation Checklist
-- [ ] Compiles in TradingView without errors
-- [ ] Signals render on SPY, QQQ, IWM charts
-- [ ] Dashboard displays (Full/Mobile modes)
-- [ ] README updated if user-facing changes
+## Build / Test
 
-## Code Style
+There is no local Pine build or test runner in this repo.
 
-### File Structure
+Manual validation workflow:
+
+1. Copy `RSI+` into TradingView Pine Editor
+2. Click `Add to Chart`
+3. Confirm it compiles without errors
+4. Validate behavior on `SPY`, `QQQ`, `IWM`
+5. Check both dashboard modes
+6. Check buy, risk, divergence, resonance, and alert behavior
+
+## Current Script Defaults
+
+These values should stay synchronized with `RSI+`.
+
+### Core Defaults
+
+| Setting | Default |
+|------|------|
+| `mode` | `Standard` |
+| `lookbackMode` | `Auto` |
+| `lookbackCustom` | `252` |
+| `lookbackPrecision` | `High` |
+| `volHistoryMode` | `1 Year` |
+| `thresholdMode` | `Auto` |
+| `rsiVolThreshold` | `8.0` |
+| `rsiLen` | `14` |
+| `useLiveData` | `true` |
+
+### Fixed RSI Threshold Defaults
+
+| Input | Default |
+|------|------|
+| `fixedRsiOversold1` | `30` |
+| `fixedRsiOversold2` | `40` |
+| `fixedRsiOverbought1` | `75` |
+| `fixedRsiOverbought2` | `65` |
+
+### Signal Logic Defaults
+
+| Setting | Default |
+|------|------|
+| `buyThresholdPct` | `50` |
+| `sellThresholdPct` | `45` |
+| `strongOffset` | `25` |
+| `cooldownIn` | `10` |
+| `useDynamicCooldown` | `true` |
+| `confirmBars` | `3` |
+| `minAgree` | `2` |
+
+### Optimization Defaults
+
+| Setting | Default |
+|------|------|
+| `useSignalQuality` | `true` |
+| `useDrawdownBonus` | `true` |
+| `useDivergenceAssist` | `true` |
+| `useDivergence` | `true` |
+| `divZScoreThreshold` | `1.7` |
+| `divCooldownBars` | `5` |
+| `trendMALen` | `10` |
+| `useTrendFilter` | `true` |
+
+### Display / Alert Defaults
+
+| Setting | Default |
+|------|------|
+| `plotMode` | `AUTO` |
+| `showDashboard` | `true` |
+| `dashboardMode` | `Full` |
+| `dashboardPosition` | `Top Right` |
+| `dashboardFontSize` | `Small` |
+| `showSignalZone` | `true` |
+| `enable_smart_alert` | `true` |
+| `min_alert_level_str` | `📈 Lv1 Buy Zone` |
+
+## Scoring Model
+
+### Factor Weights
+
+Daily mode uses:
+
+- `RSI`: `+2 / +1 / 0 / -1 / -2`
+- `FI`: `+3 / +2 / +1 / 0 / -1 / -2`
+- `TW`: `+1 / 0 / -1 / -2 / -3`
+- `Vol ratio`: `+2 / +1 / 0 / -1 / -2`
+
+Intraday mode changes breadth behavior:
+
+- `ADD` replaces the daily `TW/FI` scoring block
+- `TW` and `FI` factor scores are zeroed in this path
+- `ADD`: `+3 / +2 / +1 / 0 / -1 / -2 / -3`
+
+The script defines:
+
+- `maxBuyScore = 8`
+- `maxSellScore = 9`
+
+### Threshold Formulas
+
 ```pine
-//@version=6
-indicator("Name", overlay=true, max_labels_count=500, max_bars_back=1100)
-
-//==============================================================================
-// SECTION HEADER (ALL CAPS, = BORDER)
-//==============================================================================
-
-//========================
-// Subsection Header
-//========================
+botThreshold = int(maxBuyScore * buyThresholdPct / 100)
+strongBotThreshold = int(maxBuyScore * (buyThresholdPct + strongOffset) / 100)
+topThreshold = -int(maxSellScore * sellThresholdPct / 100)
+strongTopThreshold = -int(maxSellScore * (sellThresholdPct + strongOffset) / 100)
 ```
 
-### Naming Conventions
+With current defaults on standard daily charts:
 
-| Element | Pattern | Example |
-|---------|---------|---------|
-| Functions | `f_` prefix + camelCase | `f_rsiScore()` |
-| Variables | camelCase | `spyScore`, `displayUptrend` |
-| Input groups | `grp` prefix | `grpMode`, `grpOptimize` |
-| Function params | `_` prefix | `_rsi`, `_lookback` |
+- `BUY ZONE >= 4`
+- `PANIC LOW >= 6`
+- `CAUTION <= -4`
+- `REDUCE <= -6`
 
-### Input Parameters (Bilingual Required)
-```pine
-grpOptimize = "v7.0 Optimizations 胜率优化"
+Mode adjustments:
 
-useSignalQuality = input.bool(true, "Signal Quality Filter 信号质量过滤", 
-    group=grpOptimize,
-    tooltip="仅触发A/B级信号\nOnly trigger A/B grade signals")
-```
+- `Aggressive` -> subtracts 1 from buy thresholds and adds 1 to sell thresholds
+- `Conservative` -> inverse of aggressive
+- `Intraday` -> applies an extra 2-point sensitivity adjustment
 
-### Functions
-```pine
-// Single return - end with result variable
-f_rsiScore(_rsi, _os1, _os2, _ob1, _ob2) =>
-    score = 0.0
-    if not na(_rsi)
-        if _rsi < _os1
-            score := 2
-    score
+## Signal Semantics
 
-// Multi-return tuple
-f_signalQuality(_rsiS, _fiS, _twS, _volS) =>
-    positiveFactors = (_rsiS > 0 ? 1 : 0) + (_fiS > 0 ? 1 : 0)
-    buyQuality = positiveFactors >= 3 ? "A" : positiveFactors >= 2 ? "B" : "C"
-    [buyQuality, positiveFactors]
-```
+These names must stay consistent across script comments, README, alerts, and docs.
 
-## Critical Pine Script Patterns
+| Display | Emoji | Trigger |
+|------|------|------|
+| `PANIC LOW` | `🚀` | `buyScore >= adjStrongBotThreshold` |
+| `BUY ZONE` | `📈` | `buyScore >= adjBotThreshold` and below strong buy |
+| `HOLD` | `⚪` | score is between buy and sell thresholds |
+| `ELEVATED` | `⭐` | sell threshold reached while uptrend blocks the sell signal |
+| `CAUTION` | `⚡` | sell threshold reached in non-uptrend state |
+| `REDUCE` | `⚠️` | strong sell threshold reached in non-uptrend state |
+| `DIVERGENCE` | `💎` | bullish or bearish divergence event |
+| `RESONANCE` | `🔥 / ❄️` | multi-market agreement on buy or risk side |
 
-### Security Requests (ALWAYS use both flags)
+Important nuance:
+
+- In uptrends with `useTrendFilter = true`, sell-side states display as `ELEVATED` instead of `CAUTION` or `REDUCE`.
+- Divergence is both a displayed overlay and a possible buy-side assist.
+- Resonance is cross-market logic, not a single score threshold.
+
+## Current Function Map
+
+These functions define the main behavior and should be preserved when refactoring.
+
+| Function | Purpose |
+|------|------|
+| `f_sec()` | Standard timeframe security request |
+| `f_ohlc()` | OHLC request helper |
+| `f_secDaily()` | Confirmed daily data request |
+| `f_secDailyLive()` | Developing daily data for intraday alerts |
+| `f_dynamicCooldown()` | Volatility-based cooldown adjustment |
+| `f_signalQuality()` | A/B/C signal quality grading |
+| `f_drawdownBonus()` | Buy-side drawdown bonus |
+| `f_divergenceAssisted()` | Lets divergence push borderline buys through |
+| `f_resonanceStrength()` | Tiered multi-market resonance |
+| `f_adaptiveThresholds()` | Adaptive RSI bands from percentile math |
+| `f_rsiScore()` | RSI factor score |
+| `f_fiScore()` | FI breadth score |
+| `f_twScore()` | TW breadth score |
+| `f_volScore()` | UVOL/DVOL breadth score |
+| `f_addScore()` | Intraday ADD breadth score |
+| `f_divergence()` | Price/RSI divergence z-score |
+| `f_totalScore()` | Total factor score |
+| `f_generateSignals()` | Buy/sell/elevated state generation |
+| `f_progressBar()` | Horizontal factor bar |
+| `f_centeredBar()` | Centered score bar |
+| `f_marketStatus()` | Three-market status icon |
+
+## Dashboard Reference
+
+The actual rendered layouts in `RSI+` are:
+
+### Full Mode
+
+- `7 rows x 1 column`
+- Row 0: signal + score + trend
+- Row 1: centered score bar
+- Row 2: RSI + volume
+- Row 3: `FI + TW` in daily mode, `ADD + TW` in intraday mode; the compact `TW` slot still renders in intraday mode even though `ADD` drives the breadth score there
+- Row 4: trend + divergence + quality
+- Row 5: drawdown + filter status
+- Row 6: `SPY / QQQ / IWM` status + resonance icon
+
+### Mobile Mode
+
+- `2 rows x 1 column`
+- Row 0: signal + score + trend
+- Row 1: filter status
+
+Do not document old `11-row` or `3-row` layouts. The current output code is `7` and `2`.
+
+## Filter Status Rules
+
+`filterStatus` currently maps to:
+
+| Label | Meaning |
+|------|------|
+| `👀` | no active filter block |
+| `✋ WAIT` | buy-zone score exists but signal is filtered out |
+| `☕ HOLD` | sell threshold hit but uptrend blocks the sell |
+| `🚫` | downtrend buy-zone score while trend filter is active |
+
+## Alert System
+
+Smart Alert V2 levels:
+
+| Level | Meaning |
+|------|------|
+| `Lv1` | `BUY ZONE`, `CAUTION`, `ELEVATED` |
+| `Lv2` | `DIVERGENCE` |
+| `Lv3` | `RESONANCE` |
+| `Lv4` | `PANIC LOW`, `REDUCE` |
+| `Lv5` | strong signal + resonance combo |
+
+Implementation details that matter:
+
+- The script uses `varip` state to deduplicate alerts within the same bar.
+- Same-bar alert upgrades are allowed if a higher level appears later in the bar.
+- Buy and sell alert states are tracked separately.
+- Alert messages include ticker, side, level, signal tags, score, trend, and drawdown context where applicable.
+
+## Pine Script Rules Specific To This Repo
+
+### Security Requests
+
+Use the existing helpers:
+
 ```pine
 f_sec(_sym, _expr) =>
     request.security(_sym, tfData, _expr, barmerge.gaps_off, barmerge.lookahead_off)
@@ -94,116 +272,47 @@ f_sec(_sym, _expr) =>
 f_secDaily(_sym, _expr) =>
     request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_off)
 
-// v7.4: Intraday live daily data (lookahead_on for developing bar)
 f_secDailyLive(_sym, _expr) =>
     request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_on)
 ```
 
-### State Management
+Do not introduce lookahead bias outside `f_secDailyLive()`.
+
+### State and Cooldown
+
+Use persistent state for bar-to-bar tracking:
+
 ```pine
-var int spyLastBot = na              // Persistent across bars
-varip int buy_alert_level_sent = 0   // Intrabar persistence (alerts)
+var int spyLastBot = na
+varip int buy_alert_level_sent = 0
 
 if barstate.isnew
-    buy_alert_level_sent := 0        // Reset on new bar
+    buy_alert_level_sent := 0
 ```
 
-### Error Handling (MANDATORY)
-```pine
-if not na(_rsi)                      // Always check na
-    // safe to use
+### Defensive Coding
 
-safe_lookback = math.max(10, math.min(_lookback, bar_index - 1))  // Clamp
-ratio = _dvol > 0 ? _uvol / _dvol : 0                             // Division guard
-```
+Always guard:
 
-## Signal Reference
+- `na` values before comparisons
+- divisions with zero checks
+- lookback length with `math.min(..., bar_index)`
+- multi-line ternaries by keeping them on one line
+- cross-scope assignment by declaring variables first and using `:=`
 
-| Score | Emoji | Signal | Condition |
-|:-----:|:-----:|--------|-----------|
-| ≥ 6 | 🚀 | PANIC LOW | Extreme oversold + panic |
-| ≥ 4 | 📈 | BUY ZONE | Multi-factor buy |
-| DIV | 💎 | DIVERGENCE | Z-Score threshold |
-| ≤ -4↑ | ⭐ | ELEVATED | Overbought + uptrend |
-| ≤ -4↓ | ⚡ | CAUTION | Overbought + downtrend |
-| ≤ -6↓ | ⚠️ | REDUCE | Extreme overbought |
-| 2+ mkts | 🔥 | RESONANCE | Multi-market aligned |
+## Documentation Rules
 
-## v7.x Key Functions
+- `README.md` must describe the current script behavior, not legacy versions.
+- Any user-facing signal list must include `PANIC LOW`, `BUY ZONE`, `HOLD`, `ELEVATED`, `CAUTION`, `REDUCE`, `DIVERGENCE`, and `RESONANCE`.
+- Dashboard docs must reflect `Full = 7 rows` and `Mobile = 2 rows`.
+- Alert docs must reflect the current `Lv1` to `Lv5` level system.
+- All user-facing text added to the script should remain bilingual (`English / 中文`).
 
-| Function | Purpose |
-|----------|---------|
-| `f_signalQuality()` | A/B/C grade (factor alignment) |
-| `f_drawdownBonus()` | +1/+2/+3 at 5/10/20% DD |
-| `f_divergenceAssisted()` | Boost edge signals |
-| `f_resonanceStrength()` | Tiered multi-market sync |
-| `f_progressBar()` | v7.4 visual dashboard bars |
-| `f_centeredBar()` | v7.4 centered score bar (-8 to +8) |
-| `f_adaptiveThresholds()` | Dynamic RSI levels |
-| `f_dynamicCooldown()` | Vol-adjusted signal spacing |
-| `f_secDailyLive()` | v7.4 intraday developing daily data |
+## Validation Checklist
 
-## Common Pitfalls
-
-| Issue | Solution |
-|-------|----------|
-| `na` runtime errors | Check `not na(value)` before use |
-| Lookahead bias | Use `lookahead_off` (except `f_secDailyLive` for intraday) |
-| History overflow | Clamp with `math.min(_lookback, bar_index - 1)` |
-| Division by zero | Guard with `_denom > 0 ? ... : 0` |
-| Alert spam | Use `varip` + reset on `barstate.isnew` |
-| Wrong timeframe | Use `f_secDaily()` for 252-day calcs |
-| **Multi-line ternary** | **Keep on single line (no line breaks)** |
-| **if/else variable scope** | **Declare variable before if, use `:=` inside** |
-
-### Syntax Gotchas (CRITICAL)
-
-**1. Multi-line expressions cause "end of line" errors:**
-```pine
-// ❌ WRONG - breaks on multiple lines
-status = condA ? "A" : 
-         condB ? "B" : "C"
-
-// ✅ CORRECT - single line
-status = condA ? "A" : condB ? "B" : "C"
-```
-
-**2. Variables in if/else blocks have local scope:**
-```pine
-// ❌ WRONG - "Undeclared identifier" error
-if condition
-    myVar = "value1"
-else
-    myVar = "value2"
-doSomething(myVar)  // ERROR!
-
-// ✅ CORRECT - declare first, assign with :=
-string myVar = ""
-if condition
-    myVar := "value1"
-else
-    myVar := "value2"
-doSomething(myVar)  // OK
-```
-
-## Documentation Standards
-
-**ALL user-facing text must be bilingual (English/Chinese):**
-```pine
-"Signal Mode 信号模式"                           // Input labels
-tooltip="仅触发A/B级信号\nOnly trigger A/B grade"  // Tooltips (use \n)
-```
-
-## Quick Reference
-
-```pine
-//@version=6
-indicator("RSI+Breadth Multi-Factor v7.4", overlay=true, max_labels_count=500, max_bars_back=1100)
-
-// Function: f_name(_param) => result
-// Multi-return: [a, b] = f_name(args)
-// Security: request.security(sym, tf, expr, barmerge.gaps_off, barmerge.lookahead_off)
-// Live data: request.security(sym, "D", expr, barmerge.gaps_off, barmerge.lookahead_on)
-// Alert: alert(msg, alert.freq_all)
-// Table: table.new(position, cols, rows, bgcolor, frame_color, ...)
-```
+- [ ] Script compiles in TradingView
+- [ ] SPY / QQQ / IWM logic still works
+- [ ] Daily and intraday paths both behave correctly
+- [ ] Dashboard Full/Mobile output matches docs
+- [ ] Alert labels and thresholds match docs
+- [ ] README updated when behavior changes
