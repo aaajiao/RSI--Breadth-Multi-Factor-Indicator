@@ -72,7 +72,7 @@ rsiLen = input.int(14, "RSI Length RSI周期", minval=2, group=grp1)
 tfData = timeframe.period
 intradayMode = timeframe.isintraday
 useLiveData = input.bool(true, "Live Alert Data 实时警报数据", group=grp1,
-    tooltip="日内图使用实时日线数据触发警报（推荐）\nIntraday: use developing daily data for timely alerts\n关闭=仅收盘确认后触发 Off=confirmed data only")
+    tooltip="日内图在常规时段使用实时日线数据，盘后冻结广度快照（推荐）\nIntraday: use developing daily data during market hours, freeze breadth snapshots after the close\n关闭=仅使用已确认日线 Off=confirmed data only")
 
 //========================
 // Fixed Thresholds (固定阈值 - 可配置)
@@ -248,14 +248,25 @@ f_centeredBar(_value, _absMax, _halfLength) =>
 f_marketStatus(_score, _botTh, _topTh) =>
     _score >= _botTh ? "🟢" : _score <= _topTh ? "🔴" : "🟡"
 
+// 日内请求继承图表 session，避免 regular 数据被盘后 K 线错误延展
+// Intraday requests inherit the chart session to avoid synthetic post-market carry-forward
+f_intradayTicker(_sym) =>
+    intradayMode ? ticker.modify(_sym, syminfo.session) : _sym
+
 f_sec(_sym, _expr) =>
-    request.security(_sym, tfData, _expr, barmerge.gaps_off, barmerge.lookahead_off)
+    reqSym = f_intradayTicker(_sym)
+    reqGaps = intradayMode ? barmerge.gaps_on : barmerge.gaps_off
+    request.security(reqSym, tfData, _expr, reqGaps, barmerge.lookahead_off)
 
 f_ohlc(_sym) =>
-    request.security(_sym, tfData, [open, high, low, close], barmerge.gaps_off, barmerge.lookahead_off)
+    reqSym = f_intradayTicker(_sym)
+    reqGaps = intradayMode ? barmerge.gaps_on : barmerge.gaps_off
+    request.security(reqSym, tfData, [open, high, low, close], reqGaps, barmerge.lookahead_off)
 
+// 已确认日线：返回上一根确认完成的日线值，避免实时 HTF 漂移
+// Confirmed daily: use the last fully confirmed daily bar
 f_secDaily(_sym, _expr) =>
-    request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_off)
+    request.security(_sym, "D", _expr[1], barmerge.gaps_off, barmerge.lookahead_on)
 
 // 日内图获取当日developing数据 (lookahead_on使盘中可用，日线图不需要)
 // Intraday: get developing daily data (lookahead_on for timely alerts)
@@ -548,21 +559,48 @@ dvol = f_secDaily(dvolSym, close)
 uvolq = f_secDaily(uvolqSym, close)
 dvolq = f_secDaily(dvolqSym, close)
 
-// 日内图实时日线数据 (developing daily values for intraday charts)
-// Intraday live daily data: uses lookahead_on to get current day's developing values
-s5tw_live = (intradayMode and useLiveData) ? f_secDailyLive(s5twSym, close) : s5tw
-s5fi_live = (intradayMode and useLiveData) ? f_secDailyLive(s5fiSym, close) : s5fi
-nctw_live = (intradayMode and useLiveData) ? f_secDailyLive(nctwSym, close) : nctw
-ncfi_live = (intradayMode and useLiveData) ? f_secDailyLive(ncfiSym, close) : ncfi
-r2tw_live = (intradayMode and useLiveData) ? f_secDailyLive(r2twSym, close) : r2tw
-r2fi_live = (intradayMode and useLiveData) ? f_secDailyLive(r2fiSym, close) : r2fi
-uvol_live = (intradayMode and useLiveData) ? f_secDailyLive(uvolSym, close) : uvol
-dvol_live = (intradayMode and useLiveData) ? f_secDailyLive(dvolSym, close) : dvol
-uvolq_live = (intradayMode and useLiveData) ? f_secDailyLive(uvolqSym, close) : uvolq
-dvolq_live = (intradayMode and useLiveData) ? f_secDailyLive(dvolqSym, close) : dvolq
+// 日内图实时日线数据：常规时段内用 developing，盘后冻结为最后一个常规时段快照
+// Intraday live daily data: update during market hours, freeze after the regular close
+s5tw_live_raw = f_secDailyLive(s5twSym, close)
+s5fi_live_raw = f_secDailyLive(s5fiSym, close)
+nctw_live_raw = f_secDailyLive(nctwSym, close)
+ncfi_live_raw = f_secDailyLive(ncfiSym, close)
+r2tw_live_raw = f_secDailyLive(r2twSym, close)
+r2fi_live_raw = f_secDailyLive(r2fiSym, close)
+uvol_live_raw = f_secDailyLive(uvolSym, close)
+dvol_live_raw = f_secDailyLive(dvolSym, close)
+uvolq_live_raw = f_secDailyLive(uvolqSym, close)
+dvolq_live_raw = f_secDailyLive(dvolqSym, close)
 
-// Intraday breadth proxy
-addValue = f_sec(addSym, close)
+float s5tw_live = s5tw
+float s5fi_live = s5fi
+float nctw_live = nctw
+float ncfi_live = ncfi
+float r2tw_live = r2tw
+float r2fi_live = r2fi
+float uvol_live = uvol
+float dvol_live = dvol
+float uvolq_live = uvolq
+float dvolq_live = dvolq
+
+if intradayMode and useLiveData
+    s5tw_live := session.ismarket ? s5tw_live_raw : nz(s5tw_live[1], s5tw)
+    s5fi_live := session.ismarket ? s5fi_live_raw : nz(s5fi_live[1], s5fi)
+    nctw_live := session.ismarket ? nctw_live_raw : nz(nctw_live[1], nctw)
+    ncfi_live := session.ismarket ? ncfi_live_raw : nz(ncfi_live[1], ncfi)
+    r2tw_live := session.ismarket ? r2tw_live_raw : nz(r2tw_live[1], r2tw)
+    r2fi_live := session.ismarket ? r2fi_live_raw : nz(r2fi_live[1], r2fi)
+    uvol_live := session.ismarket ? uvol_live_raw : nz(uvol_live[1], uvol)
+    dvol_live := session.ismarket ? dvol_live_raw : nz(dvol_live[1], dvol)
+    uvolq_live := session.ismarket ? uvolq_live_raw : nz(uvolq_live[1], uvolq)
+    dvolq_live := session.ismarket ? dvolq_live_raw : nz(dvolq_live[1], dvolq)
+
+// 日内广度：常规时段跟随真实 ADD，盘后冻结最后一个常规时段值
+// Intraday breadth proxy: use real ADD during the session, freeze after the close
+addValueRaw = f_sec(addSym, close)
+float addValue = addValueRaw
+if intradayMode
+    addValue := session.ismarket ? addValueRaw : nz(addValue[1], addValueRaw)
 
 //========================
 // Dual Volatility System & Auto-Adaptive Lookback (双重波动率系统)
@@ -1120,24 +1158,24 @@ if showDashboard and barstate.islast
 
 //========================
 // Smart Alert V2 (Enhanced from Adaptive RSI Pro)
-// 智能警报：信号等级系统 + K线内去重 + 升级触发 + 增强上下文
+// 智能警报：信号等级系统 + K线内去重 + 跨K线防重发 + 升级触发
 //========================
 grpAlert = "Alerts 警报"
 enable_smart_alert = input.bool(true, "Enable Smart Alert 启用智能警报", group=grpAlert, 
-    tooltip="V2智能警报：信号等级+升级触发+K线内去重\nV2 Smart Alert: signal levels + upgrade trigger + dedup")
+    tooltip="V2智能警报：信号等级+升级触发+K线内去重+跨K线防重发\nV2 Smart Alert: signal levels + upgrades + same-bar dedup + cross-bar repeat suppression")
 min_alert_level_str = input.string("📈 Lv1 Buy Zone", "Min Alert Level 最小警报等级",
     options=["📈 Lv1 Buy Zone", "💎 Lv2 Divergence", "🔥 Lv3 Resonance", "🚀 Lv4 Panic", "🚀🔥 Lv5 Combo"],
     group=grpAlert, tooltip="Lv1=买入/卖出区间(常见) | Lv2=背离(中等)\nLv3=共振(较少) | Lv4=恐慌/减仓(很少) | Lv5=组合(极少)\n═══════════════════════\nLv1=Buy/Sell zone(common) | Lv2=Divergence(medium)\nLv3=Resonance(rare) | Lv4=Panic/Reduce(very rare) | Lv5=Combo(extreme)")
 min_alert_level = min_alert_level_str == "📈 Lv1 Buy Zone" ? 1 : min_alert_level_str == "💎 Lv2 Divergence" ? 2 : min_alert_level_str == "🔥 Lv3 Resonance" ? 3 : min_alert_level_str == "🚀 Lv4 Panic" ? 4 : 5
 
 // 信号条件 (自动检测图表标的)
-autoBotTrig = (isSpy and spyBotTrig) or (isQqq and qqqBotTrig) or (isIwm and iwmBotTrig)
-autoStrongBot = (isSpy and spyBotTrig and spyStrongBot) or (isQqq and qqqBotTrig and qqqStrongBot) or (isIwm and iwmBotTrig and iwmStrongBot)
-autoTopTrig = (isSpy and spyTopTrig) or (isQqq and qqqTopTrig) or (isIwm and iwmTopTrig)
-autoStrongTop = (isSpy and spyTopTrig and spyStrongTop) or (isQqq and qqqTopTrig and qqqStrongTop) or (isIwm and iwmTopTrig and iwmStrongTop)
+autoBotState = (isSpy and (spyStrongBot or spyBot)) or (isQqq and (qqqStrongBot or qqqBot)) or (isIwm and (iwmStrongBot or iwmBot))
+autoStrongBotState = (isSpy and spyStrongBot) or (isQqq and qqqStrongBot) or (isIwm and iwmStrongBot)
+autoTopState = (isSpy and (spyStrongTop or spyTop)) or (isQqq and (qqqStrongTop or qqqTop)) or (isIwm and (iwmStrongTop or iwmTop))
+autoStrongTopState = (isSpy and spyStrongTop) or (isQqq and qqqStrongTop) or (isIwm and iwmStrongTop)
 autoBullishDiv = (isSpy and spyBullishDiv) or (isQqq and qqqBullishDiv) or (isIwm and iwmBullishDiv)
 autoBearishDiv = (isSpy and spyBearishDiv) or (isQqq and qqqBearishDiv) or (isIwm and iwmBearishDiv)
-autoElevated = (isSpy and spyElevated) or (isQqq and qqqElevated) or (isIwm and iwmElevated)
+autoElevatedState = (isSpy and spyElevated) or (isQqq and qqqElevated) or (isIwm and iwmElevated)
 
 // 信号等级函数 (优先级越高值越大)
 // 5=恐慌+共振 | 4=恐慌低点 | 3=共振 | 2=背离 | 1=低吸/观望
@@ -1150,33 +1188,41 @@ f_sell_level(_strongTop, _top, _resonance, _div, _elevated) =>
 // varip: 追踪当前K线内已发送的最高信号等级 (K线收盘时自动重置)
 varip int buy_alert_level_sent = 0
 varip int sell_alert_level_sent = 0
+var int buy_alert_level_published = 0
+var int sell_alert_level_published = 0
 
 // 新K线开始时重置
 if barstate.isnew
     buy_alert_level_sent := 0
     sell_alert_level_sent := 0
 
+buy_signal_active = autoBotState or aggBottom or autoBullishDiv
+sell_signal_active = autoTopState or aggTop or autoBearishDiv or autoElevatedState
+current_buy_level = f_buy_level(autoStrongBotState, autoBotState, aggBottom, autoBullishDiv)
+current_sell_level = f_sell_level(autoStrongTopState, autoTopState, aggTop, autoBearishDiv, autoElevatedState)
+
+if not buy_signal_active
+    buy_alert_level_published := 0
+if not sell_signal_active
+    sell_alert_level_published := 0
+
 if enable_smart_alert
     // === 买入信号 ===
-    has_buy_signal = autoBotTrig or aggBottomEdge or autoBullishDiv
-    has_buy_signal_prev = autoBotTrig[1] or aggBottomEdge[1] or autoBullishDiv[1]
-    current_buy_level = f_buy_level(autoStrongBot, autoBotTrig, aggBottomEdge, autoBullishDiv)
-
-    // 触发条件：有信号 且 当前等级更高 且 达到最小等级（支持同K线升级触发）
-    // Trigger: has signal AND higher level AND meets min level (supports same-bar upgrades)
-    should_alert_buy = has_buy_signal and current_buy_level > buy_alert_level_sent and current_buy_level >= min_alert_level
+    // 触发条件：首次发布 / 跨K线升级 / 同K线升级，禁止持续状态重复提醒
+    // Trigger: first publish, cross-bar upgrade, or same-bar upgrade only
+    should_alert_buy = buy_signal_active and current_buy_level >= min_alert_level and (current_buy_level > buy_alert_level_published or (buy_alert_level_sent > 0 and current_buy_level > buy_alert_level_sent))
 
     if should_alert_buy
         msg = str.format("{0}: 🟢 BUY Lv{1} → ", syminfo.ticker, current_buy_level)
 
         // Signal labels (combo priority)
-        if autoStrongBot and aggBottomEdge
+        if autoStrongBotState and aggBottom
             msg := msg + "🚀Panic+🔥Resonance "
-        else if autoStrongBot
+        else if autoStrongBotState
             msg := msg + "🚀Panic Low "
-        else if aggBottomEdge
+        else if aggBottom
             msg := msg + "🔥Resonance "
-        else if autoBotTrig
+        else if autoBotState
             msg := msg + "📈Buy Zone "
         if autoBullishDiv
             msg := msg + "💎Divergence "
@@ -1189,29 +1235,26 @@ if enable_smart_alert
 
         alert(msg, alert.freq_all)
         buy_alert_level_sent := current_buy_level
+        buy_alert_level_published := current_buy_level
 
     // === 卖出/风险信号 ===
-    has_sell_signal = autoTopTrig or aggTopEdge or autoBearishDiv or autoElevated
-    has_sell_signal_prev = autoTopTrig[1] or aggTopEdge[1] or autoBearishDiv[1] or autoElevated[1]
-    current_sell_level = f_sell_level(autoStrongTop, autoTopTrig, aggTopEdge, autoBearishDiv, autoElevated)
-
-    // 触发条件：有信号 且 当前等级更高 且 达到最小等级（支持同K线升级触发）
-    // Trigger: has signal AND higher level AND meets min level (supports same-bar upgrades)
-    should_alert_sell = has_sell_signal and current_sell_level > sell_alert_level_sent and current_sell_level >= min_alert_level
+    // 触发条件：首次发布 / 跨K线升级 / 同K线升级，持续 Elevated 不重复提醒
+    // Trigger: first publish, cross-bar upgrade, or same-bar upgrade only
+    should_alert_sell = sell_signal_active and current_sell_level >= min_alert_level and (current_sell_level > sell_alert_level_published or (sell_alert_level_sent > 0 and current_sell_level > sell_alert_level_sent))
 
     if should_alert_sell
         msg = str.format("{0}: 🔴 RISK Lv{1} → ", syminfo.ticker, current_sell_level)
 
         // Signal labels (combo priority)
-        if autoStrongTop and aggTopEdge
+        if autoStrongTopState and aggTop
             msg := msg + "⚠️Reduce+❄️Resonance "
-        else if autoStrongTop
+        else if autoStrongTopState
             msg := msg + "⚠️Reduce "
-        else if aggTopEdge
+        else if aggTop
             msg := msg + "❄️Resonance "
-        else if autoTopTrig
+        else if autoTopState
             msg := msg + "⚡Caution "
-        else if autoElevated
+        else if autoElevatedState
             msg := msg + "⭐Elevated "
         if autoBearishDiv
             msg := msg + "💎Divergence "
@@ -1222,3 +1265,4 @@ if enable_smart_alert
 
         alert(msg, alert.freq_all)
         sell_alert_level_sent := current_sell_level
+        sell_alert_level_published := current_sell_level

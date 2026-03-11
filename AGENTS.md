@@ -184,9 +184,9 @@ These functions define the main behavior and should be preserved when refactorin
 
 | Function | Purpose |
 |------|------|
-| `f_sec()` | Standard timeframe security request |
-| `f_ohlc()` | OHLC request helper |
-| `f_secDaily()` | Confirmed daily data request |
+| `f_sec()` | Session-aware intraday security request |
+| `f_ohlc()` | Session-aware OHLC request helper |
+| `f_secDaily()` | Previous confirmed daily data request |
 | `f_secDailyLive()` | Developing daily data for intraday alerts |
 | `f_dynamicCooldown()` | Volatility-based cooldown adjustment |
 | `f_signalQuality()` | A/B/C signal quality grading |
@@ -257,6 +257,8 @@ Implementation details that matter:
 - The script uses `varip` state to deduplicate alerts within the same bar.
 - Same-bar alert upgrades are allowed if a higher level appears later in the bar.
 - Buy and sell alert states are tracked separately.
+- Cross-bar alert state suppresses repeated alerts while the same side remains active at the same or lower level.
+- `ELEVATED` is an entry/upgrade alert state, not a per-bar repeating alert.
 - Alert messages include ticker, side, level, signal tags, score, trend, and drawdown context where applicable.
 
 ## Pine Script Rules Specific To This Repo
@@ -266,17 +268,24 @@ Implementation details that matter:
 Use the existing helpers:
 
 ```pine
+f_intradayTicker(_sym) =>
+    intradayMode ? ticker.modify(_sym, syminfo.session) : _sym
+
 f_sec(_sym, _expr) =>
-    request.security(_sym, tfData, _expr, barmerge.gaps_off, barmerge.lookahead_off)
+    request.security(f_intradayTicker(_sym), tfData, _expr, intradayMode ? barmerge.gaps_on : barmerge.gaps_off, barmerge.lookahead_off)
 
 f_secDaily(_sym, _expr) =>
-    request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_off)
+    request.security(_sym, "D", _expr[1], barmerge.gaps_off, barmerge.lookahead_on)
 
 f_secDailyLive(_sym, _expr) =>
     request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_on)
 ```
 
-Do not introduce lookahead bias outside `f_secDailyLive()`.
+Rules:
+
+- Do not introduce lookahead bias outside `f_secDailyLive()`.
+- Intraday SPY / QQQ / IWM / ADD requests should inherit the chart session modifier.
+- `ADD`, `TW/FI`, and `UVOL/DVOL` live values should freeze outside `session.ismarket`; do not let regular-session values drift through post-market bars.
 
 ### State and Cooldown
 
@@ -285,6 +294,7 @@ Use persistent state for bar-to-bar tracking:
 ```pine
 var int spyLastBot = na
 varip int buy_alert_level_sent = 0
+var int buy_alert_level_published = 0
 
 if barstate.isnew
     buy_alert_level_sent := 0
@@ -313,6 +323,7 @@ Always guard:
 - [ ] Script compiles in TradingView
 - [ ] SPY / QQQ / IWM logic still works
 - [ ] Daily and intraday paths both behave correctly
+- [ ] Extended-session intraday charts do not fire synthetic post-close alerts from stale data
 - [ ] Dashboard Full/Mobile output matches docs
 - [ ] Alert labels and thresholds match docs
 - [ ] README updated when behavior changes

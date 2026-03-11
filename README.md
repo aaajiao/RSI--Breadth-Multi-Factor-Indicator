@@ -37,7 +37,9 @@ The current `RSI+` script implements these modules:
   - NYSE: `UVOL`, `DVOL`
   - NASDAQ: `UVOLQ`, `DVOLQ`
 - **Intraday breadth proxy**: `ADD`
-- **Intraday live alert mode**: can use developing daily values via `f_secDailyLive()`
+- **Confirmed daily helper**: `f_secDaily()` now returns the previous fully confirmed daily value
+- **Intraday live alert mode**: `f_secDailyLive()` can use developing daily values during regular market hours, then freezes breadth/volume snapshots after the close
+- **Intraday session handling**: SPY / QQQ / IWM / ADD intraday requests inherit the chart session modifier so extended-hours charts only react to real post-market bars
 
 ### Score Model
 
@@ -178,8 +180,11 @@ Alert behavior:
 
 - Same-bar upgrade alerts are allowed
 - `varip` state prevents duplicate lower-level alerts in the same bar
+- Cross-bar alert state suppresses repeated alerts while the same side stays active at the same or lower level
 - Buy and risk alerts are tracked separately
+- `ELEVATED` alerts fire on entry or later level upgrades, not on every new bar
 - Intraday charts can use live daily data if `Live Alert Data` is enabled
+- On extended-hours intraday charts, after-hours alerts are allowed only when real price-side data changes; breadth and volume-breadth inputs freeze after the regular close
 
 ### Recommended Defaults
 
@@ -216,6 +221,7 @@ Pine Script has no local build system in this repo. Validation is manual:
 3. Verify behavior on `SPY`, `QQQ`, `IWM`
 4. Check both `Full` and `Mobile` dashboard modes
 5. Check buy, risk, divergence, and resonance labels against the script logic above
+6. On extended-hours intraday charts, confirm there is no synthetic 16:01 alert when price level does not actually change
 
 ---
 
