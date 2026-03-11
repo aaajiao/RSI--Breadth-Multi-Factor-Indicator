@@ -1200,13 +1200,16 @@ buy_signal_active = autoBotState or aggBottom or autoBullishDiv
 sell_signal_active = autoTopState or aggTop or autoBearishDiv or autoElevatedState
 current_buy_level = f_buy_level(autoStrongBotState, autoBotState, aggBottom, autoBullishDiv)
 current_sell_level = f_sell_level(autoStrongTopState, autoTopState, aggTop, autoBearishDiv, autoElevatedState)
+regular_session_alerts = not intradayMode or session.ismarket
 
 if not buy_signal_active
     buy_alert_level_published := 0
 if not sell_signal_active
     sell_alert_level_published := 0
 
-if enable_smart_alert
+// 日内智能警报仅在常规交易时段触发，避免盘后 1 分钟图用冻结广度反复提醒
+// Intraday smart alerts only fire during regular market hours to avoid repeated after-hours alerts on frozen breadth data
+if enable_smart_alert and regular_session_alerts
     // === 买入信号 ===
     // 触发条件：首次发布 / 跨K线升级 / 同K线升级，禁止持续状态重复提醒
     // Trigger: first publish, cross-bar upgrade, or same-bar upgrade only

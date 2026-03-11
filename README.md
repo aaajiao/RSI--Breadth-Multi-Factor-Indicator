@@ -184,7 +184,7 @@ Alert behavior:
 - Buy and risk alerts are tracked separately
 - `ELEVATED` alerts fire on entry or later level upgrades, not on every new bar
 - Intraday charts can use live daily data if `Live Alert Data` is enabled
-- On extended-hours intraday charts, after-hours alerts are allowed only when real price-side data changes; breadth and volume-breadth inputs freeze after the regular close
+- On intraday charts, smart alerts are limited to regular market hours; after the close the script still freezes breadth snapshots, but it does not publish after-hours alerts
 
 ### Recommended Defaults
 
@@ -221,7 +221,7 @@ Pine Script has no local build system in this repo. Validation is manual:
 3. Verify behavior on `SPY`, `QQQ`, `IWM`
 4. Check both `Full` and `Mobile` dashboard modes
 5. Check buy, risk, divergence, and resonance labels against the script logic above
-6. On extended-hours intraday charts, confirm there is no synthetic 16:01 alert when price level does not actually change
+6. On extended-hours intraday charts, confirm there are no after-hours smart alerts after the regular close
 
 ---
 

@@ -259,6 +259,7 @@ Implementation details that matter:
 - Buy and sell alert states are tracked separately.
 - Cross-bar alert state suppresses repeated alerts while the same side remains active at the same or lower level.
 - `ELEVATED` is an entry/upgrade alert state, not a per-bar repeating alert.
+- Intraday smart alerts must be limited to `session.ismarket`; after-hours bars may update price, but they must not publish new alerts.
 - Alert messages include ticker, side, level, signal tags, score, trend, and drawdown context where applicable.
 
 ## Pine Script Rules Specific To This Repo
@@ -323,7 +324,7 @@ Always guard:
 - [ ] Script compiles in TradingView
 - [ ] SPY / QQQ / IWM logic still works
 - [ ] Daily and intraday paths both behave correctly
-- [ ] Extended-session intraday charts do not fire synthetic post-close alerts from stale data
+- [ ] Extended-session intraday charts do not publish any smart alerts after the regular close
 - [ ] Dashboard Full/Mobile output matches docs
 - [ ] Alert labels and thresholds match docs
 - [ ] README updated when behavior changes
