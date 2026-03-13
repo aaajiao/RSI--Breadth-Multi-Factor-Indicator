@@ -178,6 +178,7 @@ The script now uses a level system:
 
 Alert behavior:
 
+- Smart alerts reuse the same `Trig / Edge` signals that drive plotted chart markers, instead of firing directly from raw live state
 - Same-bar upgrade alerts are allowed
 - `varip` state prevents duplicate lower-level alerts in the same bar
 - Published alert levels also use rollback-safe `varip` state, so realtime bars do not re-fire the same level on each tick

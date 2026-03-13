@@ -1168,14 +1168,17 @@ min_alert_level_str = input.string("📈 Lv1 Buy Zone", "Min Alert Level 最小�
     group=grpAlert, tooltip="Lv1=买入/卖出区间(常见) | Lv2=背离(中等)\nLv3=共振(较少) | Lv4=恐慌/减仓(很少) | Lv5=组合(极少)\n═══════════════════════\nLv1=Buy/Sell zone(common) | Lv2=Divergence(medium)\nLv3=Resonance(rare) | Lv4=Panic/Reduce(very rare) | Lv5=Combo(extreme)")
 min_alert_level = min_alert_level_str == "📈 Lv1 Buy Zone" ? 1 : min_alert_level_str == "💎 Lv2 Divergence" ? 2 : min_alert_level_str == "🔥 Lv3 Resonance" ? 3 : min_alert_level_str == "🚀 Lv4 Panic" ? 4 : 5
 
-// 信号条件 (自动检测图表标的)
-autoBotState = (isSpy and (spyStrongBot or spyBot)) or (isQqq and (qqqStrongBot or qqqBot)) or (isIwm and (iwmStrongBot or iwmBot))
-autoStrongBotState = (isSpy and spyStrongBot) or (isQqq and qqqStrongBot) or (isIwm and iwmStrongBot)
-autoTopState = (isSpy and (spyStrongTop or spyTop)) or (isQqq and (qqqStrongTop or qqqTop)) or (isIwm and (iwmStrongTop or iwmTop))
-autoStrongTopState = (isSpy and spyStrongTop) or (isQqq and qqqStrongTop) or (isIwm and iwmStrongTop)
-autoBullishDiv = (isSpy and spyBullishDiv) or (isQqq and qqqBullishDiv) or (isIwm and iwmBullishDiv)
-autoBearishDiv = (isSpy and spyBearishDiv) or (isQqq and qqqBearishDiv) or (isIwm and iwmBearishDiv)
-autoElevatedState = (isSpy and spyElevated) or (isQqq and qqqElevated) or (isIwm and iwmElevated)
+// 智能提醒直接复用图上绘制所用的 trigger / edge，避免提醒与图形口径漂移
+// Smart alerts reuse the same plotted trigger / edge signals to stay aligned with chart markers
+autoBotTrig = (isSpy and spyBotTrig and (spyStrongBot or spyBot)) or (isQqq and qqqBotTrig and (qqqStrongBot or qqqBot)) or (isIwm and iwmBotTrig and (iwmStrongBot or iwmBot))
+autoStrongBotTrig = (isSpy and spyBotTrig and spyStrongBot) or (isQqq and qqqBotTrig and qqqStrongBot) or (isIwm and iwmBotTrig and iwmStrongBot)
+autoTopTrig = (isSpy and spyTopTrig and (spyStrongTop or spyTop)) or (isQqq and qqqTopTrig and (qqqStrongTop or qqqTop)) or (isIwm and iwmTopTrig and (iwmStrongTop or iwmTop))
+autoStrongTopTrig = (isSpy and spyTopTrig and spyStrongTop) or (isQqq and qqqTopTrig and qqqStrongTop) or (isIwm and iwmTopTrig and iwmStrongTop)
+autoBullishDivTrig = (isSpy and spyBullishDiv and not spyBullishDiv[1]) or (isQqq and qqqBullishDiv and not qqqBullishDiv[1]) or (isIwm and iwmBullishDiv and not iwmBullishDiv[1])
+autoBearishDivTrig = (isSpy and spyBearishDiv and not spyBearishDiv[1]) or (isQqq and qqqBearishDiv and not qqqBearishDiv[1]) or (isIwm and iwmBearishDiv and not iwmBearishDiv[1])
+autoElevatedTrig = (isSpy and spyElevated and not spyElevated[1]) or (isQqq and qqqElevated and not qqqElevated[1]) or (isIwm and iwmElevated and not iwmElevated[1])
+autoBotResonanceTrig = aggBottomEdge
+autoTopResonanceTrig = aggTopEdge
 
 // 信号等级函数 (优先级越高值越大)
 // 5=恐慌+共振 | 4=恐慌低点 | 3=共振 | 2=背离 | 1=低吸/观望
@@ -1200,10 +1203,10 @@ if barstate.isnew
     buy_alert_level_sent := 0
     sell_alert_level_sent := 0
 
-buy_signal_active = autoBotState or aggBottom or autoBullishDiv
-sell_signal_active = autoTopState or aggTop or autoBearishDiv or autoElevatedState
-current_buy_level = f_buy_level(autoStrongBotState, autoBotState, aggBottom, autoBullishDiv)
-current_sell_level = f_sell_level(autoStrongTopState, autoTopState, aggTop, autoBearishDiv, autoElevatedState)
+current_buy_level = f_buy_level(autoStrongBotTrig, autoBotTrig, autoBotResonanceTrig, autoBullishDivTrig)
+current_sell_level = f_sell_level(autoStrongTopTrig, autoTopTrig, autoTopResonanceTrig, autoBearishDivTrig, autoElevatedTrig)
+buy_signal_active = current_buy_level > 0
+sell_signal_active = current_sell_level > 0
 regular_session_alerts = not intradayMode or session.ismarket
 live_intraday_latch_mode = intradayMode and useLiveData
 prev_regular_session = bar_index > 0 ? session.ismarket[1] : false
@@ -1236,15 +1239,15 @@ if enable_smart_alert and regular_session_alerts
         msg = str.format("{0}: 🟢 BUY Lv{1} → ", syminfo.ticker, current_buy_level)
 
         // Signal labels (combo priority)
-        if autoStrongBotState and aggBottom
+        if autoStrongBotTrig and autoBotResonanceTrig
             msg := msg + "🚀Panic+🔥Resonance "
-        else if autoStrongBotState
+        else if autoStrongBotTrig
             msg := msg + "🚀Panic Low "
-        else if aggBottom
+        else if autoBotResonanceTrig
             msg := msg + "🔥Resonance "
-        else if autoBotState
+        else if autoBotTrig
             msg := msg + "📈Buy Zone "
-        if autoBullishDiv
+        if autoBullishDivTrig
             msg := msg + "💎Divergence "
 
         // v7.0 Context info (quality + drawdown + score)
@@ -1270,17 +1273,17 @@ if enable_smart_alert and regular_session_alerts
         msg = str.format("{0}: 🔴 RISK Lv{1} → ", syminfo.ticker, current_sell_level)
 
         // Signal labels (combo priority)
-        if autoStrongTopState and aggTop
+        if autoStrongTopTrig and autoTopResonanceTrig
             msg := msg + "⚠️Reduce+❄️Resonance "
-        else if autoStrongTopState
+        else if autoStrongTopTrig
             msg := msg + "⚠️Reduce "
-        else if aggTop
+        else if autoTopResonanceTrig
             msg := msg + "❄️Resonance "
-        else if autoTopState
+        else if autoTopTrig
             msg := msg + "⚡Caution "
-        else if autoElevatedState
+        else if autoElevatedTrig
             msg := msg + "⭐Elevated "
-        if autoBearishDiv
+        if autoBearishDivTrig
             msg := msg + "💎Divergence "
 
         // v7.0 Context info (score + trend)

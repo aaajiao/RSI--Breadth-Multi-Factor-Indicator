@@ -254,6 +254,7 @@ Smart Alert V2 levels:
 
 Implementation details that matter:
 
+- Smart alerts must reuse the plotted `Trig / Edge` signals (`spyBotTrig`, `spyTopTrig`, `aggBottomEdge`, divergence/elevated edges, etc.); do not drive published alerts directly from raw active state.
 - The script uses `varip` state to deduplicate alerts within the same bar.
 - Same-bar alert upgrades are allowed if a higher level appears later in the bar.
 - Buy and sell alert states are tracked separately.
