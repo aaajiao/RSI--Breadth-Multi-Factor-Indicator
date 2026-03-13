@@ -1190,6 +1190,10 @@ varip int buy_alert_level_sent = 0
 varip int sell_alert_level_sent = 0
 varip int buy_alert_level_published = 0
 varip int sell_alert_level_published = 0
+varip bool buy_alert_armed = true
+varip bool sell_alert_armed = true
+varip int buy_alert_latched_level = 0
+varip int sell_alert_latched_level = 0
 
 // 新K线开始时重置
 if barstate.isnew
@@ -1201,11 +1205,23 @@ sell_signal_active = autoTopState or aggTop or autoBearishDiv or autoElevatedSta
 current_buy_level = f_buy_level(autoStrongBotState, autoBotState, aggBottom, autoBullishDiv)
 current_sell_level = f_sell_level(autoStrongTopState, autoTopState, aggTop, autoBearishDiv, autoElevatedState)
 regular_session_alerts = not intradayMode or session.ismarket
+live_intraday_latch_mode = intradayMode and useLiveData
+chart_buy_score = isSpy ? spyBuyScore : isQqq ? qqqBuyScore : isIwm ? iwmBuyScore : na
+chart_sell_score = isSpy ? spySellScore : isQqq ? qqqSellScore : isIwm ? iwmSellScore : na
+buy_deep_neutral_reset = not buy_signal_active and not na(chart_buy_score) and chart_buy_score <= adjBotThreshold - 2
+sell_deep_neutral_reset = not sell_signal_active and not na(chart_sell_score) and chart_sell_score >= adjTopThreshold + 2
+buy_opposite_reset = current_sell_level > 0 and current_buy_level == 0
+sell_opposite_reset = current_buy_level > 0 and current_sell_level == 0
 
-if not buy_signal_active
-    buy_alert_level_published := 0
-if not sell_signal_active
-    sell_alert_level_published := 0
+if not live_intraday_latch_mode
+    buy_alert_armed := true
+    sell_alert_armed := true
+    buy_alert_latched_level := 0
+    sell_alert_latched_level := 0
+    if not buy_signal_active
+        buy_alert_level_published := 0
+    if not sell_signal_active
+        sell_alert_level_published := 0
 
 // 日内智能警报仅在常规交易时段触发，避免盘后 1 分钟图用冻结广度反复提醒
 // Intraday smart alerts only fire during regular market hours to avoid repeated after-hours alerts on frozen breadth data
@@ -1213,7 +1229,7 @@ if enable_smart_alert and regular_session_alerts
     // === 买入信号 ===
     // 触发条件：首次发布 / 跨K线升级 / 同K线升级，禁止持续状态重复提醒
     // Trigger: first publish, cross-bar upgrade, or same-bar upgrade only
-    should_alert_buy = buy_signal_active and current_buy_level >= min_alert_level and (current_buy_level > buy_alert_level_published or (buy_alert_level_sent > 0 and current_buy_level > buy_alert_level_sent))
+    should_alert_buy = live_intraday_latch_mode ? buy_signal_active and current_buy_level >= min_alert_level and (buy_alert_armed or current_buy_level > buy_alert_latched_level or (buy_alert_level_sent > 0 and current_buy_level > buy_alert_level_sent)) : buy_signal_active and current_buy_level >= min_alert_level and (current_buy_level > buy_alert_level_published or (buy_alert_level_sent > 0 and current_buy_level > buy_alert_level_sent))
 
     if should_alert_buy
         msg = str.format("{0}: 🟢 BUY Lv{1} → ", syminfo.ticker, current_buy_level)
@@ -1238,12 +1254,16 @@ if enable_smart_alert and regular_session_alerts
 
         alert(msg, alert.freq_all)
         buy_alert_level_sent := current_buy_level
-        buy_alert_level_published := current_buy_level
+        if live_intraday_latch_mode
+            buy_alert_armed := false
+            buy_alert_latched_level := current_buy_level
+        else
+            buy_alert_level_published := current_buy_level
 
     // === 卖出/风险信号 ===
     // 触发条件：首次发布 / 跨K线升级 / 同K线升级，持续 Elevated 不重复提醒
     // Trigger: first publish, cross-bar upgrade, or same-bar upgrade only
-    should_alert_sell = sell_signal_active and current_sell_level >= min_alert_level and (current_sell_level > sell_alert_level_published or (sell_alert_level_sent > 0 and current_sell_level > sell_alert_level_sent))
+    should_alert_sell = live_intraday_latch_mode ? sell_signal_active and current_sell_level >= min_alert_level and (sell_alert_armed or current_sell_level > sell_alert_latched_level or (sell_alert_level_sent > 0 and current_sell_level > sell_alert_level_sent)) : sell_signal_active and current_sell_level >= min_alert_level and (current_sell_level > sell_alert_level_published or (sell_alert_level_sent > 0 and current_sell_level > sell_alert_level_sent))
 
     if should_alert_sell
         msg = str.format("{0}: 🔴 RISK Lv{1} → ", syminfo.ticker, current_sell_level)
@@ -1268,4 +1288,16 @@ if enable_smart_alert and regular_session_alerts
 
         alert(msg, alert.freq_all)
         sell_alert_level_sent := current_sell_level
-        sell_alert_level_published := current_sell_level
+        if live_intraday_latch_mode
+            sell_alert_armed := false
+            sell_alert_latched_level := current_sell_level
+        else
+            sell_alert_level_published := current_sell_level
+
+if live_intraday_latch_mode
+    if buy_deep_neutral_reset or buy_opposite_reset
+        buy_alert_armed := true
+        buy_alert_latched_level := 0
+    if sell_deep_neutral_reset or sell_opposite_reset
+        sell_alert_armed := true
+        sell_alert_latched_level := 0

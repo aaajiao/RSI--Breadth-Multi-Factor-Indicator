@@ -181,6 +181,9 @@ Alert behavior:
 - Same-bar upgrade alerts are allowed
 - `varip` state prevents duplicate lower-level alerts in the same bar
 - Published alert levels also use rollback-safe `varip` state, so realtime bars do not re-fire the same level on each tick
+- On `intraday + Live Alert Data`, same-side alerts now use a latch, so Lv1 does not re-fire while price/breadth keeps rubbing around the same zone
+- Live intraday re-arm requires either a deep-neutral reset (`buyScore <= adjBotThreshold - 2` / `sellScore >= adjTopThreshold + 2`) or an opposite-side takeover
+- Live intraday still allows strict level upgrades only (`Lv1 -> Lv3/4/5`); same-level repeats and downgrades stay muted until reset
 - Cross-bar alert state suppresses repeated alerts while the same side stays active at the same or lower level
 - Buy and risk alerts are tracked separately
 - `ELEVATED` alerts fire on entry or later level upgrades, not on every new bar
