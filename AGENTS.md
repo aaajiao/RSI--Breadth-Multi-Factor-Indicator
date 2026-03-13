@@ -295,7 +295,7 @@ Use persistent state for bar-to-bar tracking:
 ```pine
 var int spyLastBot = na
 varip int buy_alert_level_sent = 0
-var int buy_alert_level_published = 0
+varip int buy_alert_level_published = 0
 
 if barstate.isnew
     buy_alert_level_sent := 0

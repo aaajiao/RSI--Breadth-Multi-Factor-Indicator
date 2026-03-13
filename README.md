@@ -180,6 +180,7 @@ Alert behavior:
 
 - Same-bar upgrade alerts are allowed
 - `varip` state prevents duplicate lower-level alerts in the same bar
+- Published alert levels also use rollback-safe `varip` state, so realtime bars do not re-fire the same level on each tick
 - Cross-bar alert state suppresses repeated alerts while the same side stays active at the same or lower level
 - Buy and risk alerts are tracked separately
 - `ELEVATED` alerts fire on entry or later level upgrades, not on every new bar

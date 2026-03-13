@@ -1185,11 +1185,11 @@ f_buy_level(_strongBot, _bot, _resonance, _div) =>
 f_sell_level(_strongTop, _top, _resonance, _div, _elevated) =>
     _strongTop and _resonance ? 5 : _strongTop ? 4 : _resonance ? 3 : _div ? 2 : (_top or _elevated) ? 1 : 0
 
-// varip: 追踪当前K线内已发送的最高信号等级 (K线收盘时自动重置)
+// varip: 在实时K线的多次重算间保留状态，避免 rollback 导致同级别警报重复触发
 varip int buy_alert_level_sent = 0
 varip int sell_alert_level_sent = 0
-var int buy_alert_level_published = 0
-var int sell_alert_level_published = 0
+varip int buy_alert_level_published = 0
+varip int sell_alert_level_published = 0
 
 // 新K线开始时重置
 if barstate.isnew
