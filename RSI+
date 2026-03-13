@@ -1206,12 +1206,8 @@ current_buy_level = f_buy_level(autoStrongBotState, autoBotState, aggBottom, aut
 current_sell_level = f_sell_level(autoStrongTopState, autoTopState, aggTop, autoBearishDiv, autoElevatedState)
 regular_session_alerts = not intradayMode or session.ismarket
 live_intraday_latch_mode = intradayMode and useLiveData
-chart_buy_score = isSpy ? spyBuyScore : isQqq ? qqqBuyScore : isIwm ? iwmBuyScore : na
-chart_sell_score = isSpy ? spySellScore : isQqq ? qqqSellScore : isIwm ? iwmSellScore : na
-buy_deep_neutral_reset = not buy_signal_active and not na(chart_buy_score) and chart_buy_score <= adjBotThreshold - 2
-sell_deep_neutral_reset = not sell_signal_active and not na(chart_sell_score) and chart_sell_score >= adjTopThreshold + 2
-buy_opposite_reset = current_sell_level > 0 and current_buy_level == 0
-sell_opposite_reset = current_buy_level > 0 and current_sell_level == 0
+prev_regular_session = bar_index > 0 ? session.ismarket[1] : false
+new_live_intraday_session = live_intraday_latch_mode and session.ismarket and not prev_regular_session
 
 if not live_intraday_latch_mode
     buy_alert_armed := true
@@ -1222,6 +1218,11 @@ if not live_intraday_latch_mode
         buy_alert_level_published := 0
     if not sell_signal_active
         sell_alert_level_published := 0
+else if new_live_intraday_session
+    buy_alert_armed := true
+    sell_alert_armed := true
+    buy_alert_latched_level := 0
+    sell_alert_latched_level := 0
 
 // 日内智能警报仅在常规交易时段触发，避免盘后 1 分钟图用冻结广度反复提醒
 // Intraday smart alerts only fire during regular market hours to avoid repeated after-hours alerts on frozen breadth data
@@ -1293,11 +1294,3 @@ if enable_smart_alert and regular_session_alerts
             sell_alert_latched_level := current_sell_level
         else
             sell_alert_level_published := current_sell_level
-
-if live_intraday_latch_mode
-    if buy_deep_neutral_reset or buy_opposite_reset
-        buy_alert_armed := true
-        buy_alert_latched_level := 0
-    if sell_deep_neutral_reset or sell_opposite_reset
-        sell_alert_armed := true
-        sell_alert_latched_level := 0

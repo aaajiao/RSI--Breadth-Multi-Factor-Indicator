@@ -258,8 +258,8 @@ Implementation details that matter:
 - Same-bar alert upgrades are allowed if a higher level appears later in the bar.
 - Buy and sell alert states are tracked separately.
 - Cross-bar alert state suppresses repeated alerts while the same side remains active at the same or lower level.
-- On `intradayMode + useLiveData`, same-side alerts are latched until either a deep-neutral reset or an opposite-side takeover occurs.
-- The live intraday hysteresis reset is fixed at `2` score points from the side threshold: `buyScore <= adjBotThreshold - 2` and `sellScore >= adjTopThreshold + 2`.
+- On `intradayMode + useLiveData`, same-side alerts are latched for the full regular session and only re-arm at the next regular-session open.
+- Live intraday same-level repeats and downgrades stay muted during the current regular session; only strict upgrades may publish after the first alert.
 - `ELEVATED` is an entry/upgrade alert state, not a per-bar repeating alert.
 - Intraday smart alerts must be limited to `session.ismarket`; after-hours bars may update price, but they must not publish new alerts.
 - Alert messages include ticker, side, level, signal tags, score, trend, and drawdown context where applicable.
