@@ -164,6 +164,19 @@ Actual layout in code: **2 rows x 1 column**
 | `☕ HOLD` | Sell threshold reached, but uptrend blocks sell signal | Trend says hold risk cautiously |
 | `🚫` | Buy-zone score in downtrend with trend filter active | Bear-market style risk filter |
 
+#### How To Read `filterStatus` And `signalText`
+
+`filterStatus` and the main signal line do different jobs:
+
+- `filterStatus` tells you whether the setup is being blocked by a filter.
+- `signalText` tells you the actual market state: `PANIC LOW`, `BUY ZONE`, `HOLD`, `ELEVATED`, `CAUTION`, or `REDUCE`.
+
+Read them together:
+
+- `👀 + ⚪ HOLD`: no active filter block, but there is still no buy signal. This is a clean neutral state, not an entry by itself.
+- `👀 + 📈 BUY ZONE`: the chart is in the buy zone and no filter is blocking it. This is the standard valid buy window.
+- `👀 + 🚀 PANIC LOW`: the chart is in the stronger buy state and no filter is blocking it.
+
 ### Smart Alerts V2
 
 The script now uses a level system:
