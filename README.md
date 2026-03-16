@@ -169,7 +169,8 @@ Actual layout in code: **2 rows x 1 column**
 `filterStatus` and the main signal line do different jobs:
 
 - `filterStatus` tells you whether the setup is being blocked by a filter.
-- `signalText` tells you the actual market state: `PANIC LOW`, `BUY ZONE`, `HOLD`, `ELEVATED`, `CAUTION`, or `REDUCE`.
+- In `SPY / QQQ / IWM` display modes, `signalText` follows the latest plotted chart signal state, so the dashboard stays aligned with the K-line marker sequence.
+- `signalText` tells you the current displayed market state: `PANIC LOW`, `BUY ZONE`, `HOLD`, `ELEVATED`, `CAUTION`, or `REDUCE`.
 
 Read them together:
 
@@ -192,6 +193,8 @@ The script now uses a level system:
 Alert behavior:
 
 - Smart alerts reuse the same `Trig / Edge` signals that drive plotted chart markers, instead of firing directly from raw live state
+- Smart alerts follow the currently displayed plotted K-line signal path, so manual `Display Mode` changes stay visually aligned with alerts
+- `PANIC LOW` / `REDUCE` upgrades from an already-active `BUY ZONE` / `CAUTION` still count as fresh strict upgrades for both chart markers and alerts
 - Same-bar upgrade alerts are allowed
 - `varip` state prevents duplicate lower-level alerts in the same bar
 - Published alert levels also use rollback-safe `varip` state, so realtime bars do not re-fire the same level on each tick

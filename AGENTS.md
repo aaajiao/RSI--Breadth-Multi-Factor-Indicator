@@ -242,6 +242,10 @@ Do not document old `11-row` or `3-row` layouts. The current output code is `7` 
 
 ## Alert System
 
+Dashboard main signal rules that matter:
+
+- In `SPY / QQQ / IWM` display modes, the panel's main `signalText` / emoji must follow the latest plotted K-line signal state, not a separate raw-score-only state machine.
+
 Smart Alert V2 levels:
 
 | Level | Meaning |
@@ -255,6 +259,8 @@ Smart Alert V2 levels:
 Implementation details that matter:
 
 - Smart alerts must reuse the plotted `Trig / Edge` signals (`spyBotTrig`, `spyTopTrig`, `aggBottomEdge`, divergence/elevated edges, etc.); do not drive published alerts directly from raw active state.
+- Smart alerts must follow the currently displayed K-line signal path under `Display Mode`; manual `SPY / QQQ / IWM / AGG` selection must not leave alerts on a different symbol/state than the visible markers.
+- `PANIC LOW` / `REDUCE` plot markers must also fire on strict same-side upgrades from `BUY ZONE` / `CAUTION`, even if the base cooldown would suppress a duplicate weak signal.
 - The script uses `varip` state to deduplicate alerts within the same bar.
 - Same-bar alert upgrades are allowed if a higher level appears later in the bar.
 - Buy and sell alert states are tracked separately.

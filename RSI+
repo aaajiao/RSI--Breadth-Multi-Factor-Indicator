@@ -296,9 +296,7 @@ f_dynamicCooldown(_baseCooldown, _volFast, _volThreshold) =>
     else
         volRatio = _volFast / _volThreshold
         // 高波动 (>1.2x): 60% 冷却 | 正常: 100% | 低波动 (<0.8x): 150% 冷却
-        adjustedCooldown = volRatio > 1.2 ? int(_baseCooldown * 0.6) :
-                           volRatio < 0.8 ? int(_baseCooldown * 1.5) :
-                           _baseCooldown
+        adjustedCooldown = volRatio > 1.2 ? int(_baseCooldown * 0.6) : volRatio < 0.8 ? int(_baseCooldown * 1.5) : _baseCooldown
         math.max(3, adjustedCooldown)  // 最小3根K线
 
 //========================
@@ -371,10 +369,7 @@ f_resonanceStrength(_spyTrig, _qqqTrig, _iwmTrig, _spyRecent, _qqqRecent, _iwmRe
     windowCount = (_spyRecent ? 1 : 0) + (_qqqRecent ? 1 : 0) + (_iwmRecent ? 1 : 0)
 
     // 共振强度: 3=完美共振(3市场同步), 2.5=双同步, 2=窗口共振, 1=单市场
-    strength = syncCount >= 3 ? 3.0 :
-               syncResonance ? 2.5 :
-               windowCount >= 2 ? 2.0 :
-               windowCount >= 1 ? 1.0 : 0.0
+    strength = syncCount >= 3 ? 3.0 : syncResonance ? 2.5 : windowCount >= 2 ? 2.0 : windowCount >= 1 ? 1.0 : 0.0
 
     // 共振加分
     bonus = strength >= 2.5 ? 1.0 : strength >= 2 ? 0.5 : 0.0
@@ -858,6 +853,40 @@ qqqTopTrig = f_applyCooldown(qqqTopRaw, cooldownBars, qqqLastTop)
 iwmBotTrig = f_applyCooldown(iwmBotRaw, cooldownBars, iwmLastBot)
 iwmTopTrig = f_applyCooldown(iwmTopRaw, cooldownBars, iwmLastTop)
 
+// Strong upgrades should still publish once when a live weak signal strengthens inside cooldown.
+spyStrongBotPrev = bar_index > 0 ? spyStrongBot[1] : false
+qqqStrongBotPrev = bar_index > 0 ? qqqStrongBot[1] : false
+iwmStrongBotPrev = bar_index > 0 ? iwmStrongBot[1] : false
+spyStrongTopPrev = bar_index > 0 ? spyStrongTop[1] : false
+qqqStrongTopPrev = bar_index > 0 ? qqqStrongTop[1] : false
+iwmStrongTopPrev = bar_index > 0 ? iwmStrongTop[1] : false
+spyBotRawPrev = bar_index > 0 ? spyBotRaw[1] : false
+qqqBotRawPrev = bar_index > 0 ? qqqBotRaw[1] : false
+iwmBotRawPrev = bar_index > 0 ? iwmBotRaw[1] : false
+spyTopRawPrev = bar_index > 0 ? spyTopRaw[1] : false
+qqqTopRawPrev = bar_index > 0 ? qqqTopRaw[1] : false
+iwmTopRawPrev = bar_index > 0 ? iwmTopRaw[1] : false
+
+spyStrongBotUpgrade = spyStrongBot and not spyStrongBotPrev and spyBotRawPrev
+qqqStrongBotUpgrade = qqqStrongBot and not qqqStrongBotPrev and qqqBotRawPrev
+iwmStrongBotUpgrade = iwmStrongBot and not iwmStrongBotPrev and iwmBotRawPrev
+spyStrongTopUpgrade = spyStrongTop and not spyStrongTopPrev and spyTopRawPrev
+qqqStrongTopUpgrade = qqqStrongTop and not qqqStrongTopPrev and qqqTopRawPrev
+iwmStrongTopUpgrade = iwmStrongTop and not iwmStrongTopPrev and iwmTopRawPrev
+
+spyBotPlot = spyBotTrig and spyBot
+qqqBotPlot = qqqBotTrig and qqqBot
+iwmBotPlot = iwmBotTrig and iwmBot
+spyTopPlot = spyTopTrig and spyTop
+qqqTopPlot = qqqTopTrig and qqqTop
+iwmTopPlot = iwmTopTrig and iwmTop
+spyStrongBotPlot = (spyBotTrig and spyStrongBot) or spyStrongBotUpgrade
+qqqStrongBotPlot = (qqqBotTrig and qqqStrongBot) or qqqStrongBotUpgrade
+iwmStrongBotPlot = (iwmBotTrig and iwmStrongBot) or iwmStrongBotUpgrade
+spyStrongTopPlot = (spyTopTrig and spyStrongTop) or spyStrongTopUpgrade
+qqqStrongTopPlot = (qqqTopTrig and qqqStrongTop) or qqqStrongTopUpgrade
+iwmStrongTopPlot = (iwmTopTrig and iwmStrongTop) or iwmStrongTopUpgrade
+
 if spyBotTrig
     spyLastBot := bar_index
 if spyTopTrig
@@ -925,21 +954,34 @@ displayBuyQuality = showSpy ? spyBuyQuality : showQqq ? qqqBuyQuality : showIwm 
 displayDrawdown = showSpy ? spyDrawdown : showQqq ? qqqDrawdown : showIwm ? iwmDrawdown : (spyDrawdown + qqqDrawdown + iwmDrawdown) / 3
 displayDrawdownBonus = showSpy ? spyDrawdownBonus : showQqq ? qqqDrawdownBonus : showIwm ? iwmDrawdownBonus : (spyDrawdownBonus + qqqDrawdownBonus + iwmDrawdownBonus) / 3
 displayPosFactor = showSpy ? spyPosFactor : showQqq ? qqqPosFactor : showIwm ? iwmPosFactor : int((spyPosFactor + qqqPosFactor + iwmPosFactor) / 3)
+displayUptrend = showSpy ? spyUptrend : showQqq ? qqqUptrend : showIwm ? iwmUptrend : (spyUptrend and qqqUptrend) or (spyUptrend and iwmUptrend) or (qqqUptrend and iwmUptrend)
+displayElevated = showSpy ? spyElevated : showQqq ? qqqElevated : showIwm ? iwmElevated : (spyElevated or qqqElevated or iwmElevated)
 
 //========================
 // Signal Zone State (v7.0: 信号区间状态跟踪)
 //========================
 // 信号触发条件 (使用当前显示模式的信号)
-displayBotTrig = showSpy ? spyBotTrig : showQqq ? qqqBotTrig : showIwm ? iwmBotTrig : aggBottomEdge
-displayTopTrig = showSpy ? spyTopTrig : showQqq ? qqqTopTrig : showIwm ? iwmTopTrig : aggTopEdge
-displayBotSignal = showSpy ? (spyStrongBot or spyBot) : showQqq ? (qqqStrongBot or qqqBot) : showIwm ? (iwmStrongBot or iwmBot) : aggBottom
-displayTopSignal = showSpy ? (spyStrongTop or spyTop) : showQqq ? (qqqStrongTop or qqqTop) : showIwm ? (iwmStrongTop or iwmTop) : aggTop
+displayBotTrig = showSpy ? (spyBotPlot or spyStrongBotPlot) : showQqq ? (qqqBotPlot or qqqStrongBotPlot) : showIwm ? (iwmBotPlot or iwmStrongBotPlot) : aggBottomEdge
+displayTopTrig = showSpy ? (spyTopPlot or spyStrongTopPlot) : showQqq ? (qqqTopPlot or qqqStrongTopPlot) : showIwm ? (iwmTopPlot or iwmStrongTopPlot) : aggTopEdge
+displayStrongBotSignal = showSpy ? spyStrongBot : showQqq ? qqqStrongBot : showIwm ? iwmStrongBot : (aggBottom and displayScore >= adjStrongBotThreshold)
+displayBotOnlySignal = showSpy ? spyBot : showQqq ? qqqBot : showIwm ? iwmBot : (aggBottom and displayScore >= adjBotThreshold and displayScore < adjStrongBotThreshold)
+displayStrongTopSignal = showSpy ? spyStrongTop : showQqq ? qqqStrongTop : showIwm ? iwmStrongTop : (aggTop and displayScore <= adjStrongTopThreshold)
+displayTopOnlySignal = showSpy ? spyTop : showQqq ? qqqTop : showIwm ? iwmTop : (aggTop and displayScore <= adjTopThreshold and displayScore > adjStrongTopThreshold)
+displayBotSignal = displayStrongBotSignal or displayBotOnlySignal
+displayTopSignal = displayStrongTopSignal or displayTopOnlySignal
+displayStrongBotPlotTrig = showSpy ? spyStrongBotPlot : showQqq ? qqqStrongBotPlot : showIwm ? iwmStrongBotPlot : false
+displayBotPlotTrig = showSpy ? spyBotPlot : showQqq ? qqqBotPlot : showIwm ? iwmBotPlot : false
+displayStrongTopPlotTrig = showSpy ? spyStrongTopPlot : showQqq ? qqqStrongTopPlot : showIwm ? iwmStrongTopPlot : false
+displayTopPlotTrig = showSpy ? spyTopPlot : showQqq ? qqqTopPlot : showIwm ? iwmTopPlot : false
+displayElevatedPlotTrig = showSpy ? (spyElevated and not spyElevated[1]) : showQqq ? (qqqElevated and not qqqElevated[1]) : showIwm ? (iwmElevated and not iwmElevated[1]) : false
+displayUsesPlottedSignalState = showSpy or showQqq or showIwm
 
 // HOLD 区间: 评分在买入和卖出阈值之间
 isHoldZone = displayScore < adjBotThreshold and displayScore > adjTopThreshold
 
 // 使用 var 跟踪当前区间状态 (0=无, 1=买入区间, -1=卖出区间)
 var int signalZoneState = 0
+var int panelSignalState = 0
 
 // 状态转换逻辑
 if displayBotTrig and displayBotSignal
@@ -948,6 +990,30 @@ else if displayTopTrig and displayTopSignal
     signalZoneState := -1  // 进入卖出区间
 else if isHoldZone
     signalZoneState := 0  // 回到 HOLD，结束区间
+
+if displayUsesPlottedSignalState
+    if displayStrongBotPlotTrig
+        panelSignalState := 2
+    else if displayBotPlotTrig
+        panelSignalState := 1
+    else if displayStrongTopPlotTrig
+        panelSignalState := -3
+    else if displayTopPlotTrig
+        panelSignalState := -2
+    else if displayElevatedPlotTrig
+        panelSignalState := -1
+    else if isHoldZone
+        panelSignalState := 0
+else
+    panelSignalState := displayStrongBotSignal ? 2 : displayBotOnlySignal ? 1 : displayElevated ? -1 : displayStrongTopSignal ? -3 : displayTopOnlySignal ? -2 : 0
+
+panelStrongBotSignal = panelSignalState == 2
+panelBotOnlySignal = panelSignalState == 1
+panelElevatedSignal = panelSignalState == -1
+panelTopOnlySignal = panelSignalState == -2
+panelStrongTopSignal = panelSignalState == -3
+panelBuyActive = panelStrongBotSignal or panelBotOnlySignal
+panelSellActive = panelElevatedSignal or panelTopOnlySignal or panelStrongTopSignal
 
 // 背景颜色
 buyZoneColor = color.new(color.lime, 90)  // 绿色半透明
@@ -961,28 +1027,28 @@ bgcolor(showSignalZone and signalZoneState == -1 ? sellZoneColor : na, title="Se
 // Plot shapes
 //========================
 // SPY
-plotshape(showSpy and spyBotTrig and spyStrongBot, title="SPY Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
-plotshape(showSpy and spyBotTrig and spyBot, title="SPY Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
-plotshape(showSpy and spyTopTrig and spyStrongTop, title="SPY Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
-plotshape(showSpy and spyTopTrig and spyTop, title="SPY Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
+plotshape(showSpy and spyStrongBotPlot, title="SPY Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
+plotshape(showSpy and spyBotPlot, title="SPY Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
+plotshape(showSpy and spyStrongTopPlot, title="SPY Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
+plotshape(showSpy and spyTopPlot, title="SPY Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
 plotshape(showSpy and spyElevated and not spyElevated[1], title="SPY Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="⭐")
 plotshape(showSpy and spyBullishDiv and not spyBullishDiv[1], title="SPY Bullish Div", style=shape.labelup, location=location.belowbar, color=color.new(color.aqua, 0), textcolor=color.black, size=size.small, text="💎")
 plotshape(showSpy and spyBearishDiv and not spyBearishDiv[1], title="SPY Bearish Div", style=shape.labeldown, location=location.abovebar, color=color.new(color.fuchsia, 0), textcolor=color.white, size=size.small, text="💎")
 
 // QQQ
-plotshape(showQqq and qqqBotTrig and qqqStrongBot, title="QQQ Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
-plotshape(showQqq and qqqBotTrig and qqqBot, title="QQQ Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
-plotshape(showQqq and qqqTopTrig and qqqStrongTop, title="QQQ Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
-plotshape(showQqq and qqqTopTrig and qqqTop, title="QQQ Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
+plotshape(showQqq and qqqStrongBotPlot, title="QQQ Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
+plotshape(showQqq and qqqBotPlot, title="QQQ Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
+plotshape(showQqq and qqqStrongTopPlot, title="QQQ Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
+plotshape(showQqq and qqqTopPlot, title="QQQ Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
 plotshape(showQqq and qqqElevated and not qqqElevated[1], title="QQQ Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="⭐")
 plotshape(showQqq and qqqBullishDiv and not qqqBullishDiv[1], title="QQQ Bullish Div", style=shape.labelup, location=location.belowbar, color=color.new(color.aqua, 0), textcolor=color.black, size=size.small, text="💎")
 plotshape(showQqq and qqqBearishDiv and not qqqBearishDiv[1], title="QQQ Bearish Div", style=shape.labeldown, location=location.abovebar, color=color.new(color.fuchsia, 0), textcolor=color.white, size=size.small, text="💎")
 
 // IWM
-plotshape(showIwm and iwmBotTrig and iwmStrongBot, title="IWM Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
-plotshape(showIwm and iwmBotTrig and iwmBot, title="IWM Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
-plotshape(showIwm and iwmTopTrig and iwmStrongTop, title="IWM Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
-plotshape(showIwm and iwmTopTrig and iwmTop, title="IWM Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
+plotshape(showIwm and iwmStrongBotPlot, title="IWM Panic Low", style=shape.labelup, location=location.belowbar, color=color.new(color.lime, 0), textcolor=color.black, size=size.normal, text="🚀")
+plotshape(showIwm and iwmBotPlot, title="IWM Buy Zone", style=shape.triangleup, location=location.belowbar, color=color.new(color.lime, 0), size=size.small, text="📈")
+plotshape(showIwm and iwmStrongTopPlot, title="IWM Reduce", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, size=size.normal, text="⚠️")
+plotshape(showIwm and iwmTopPlot, title="IWM Caution", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="⚡")
 plotshape(showIwm and iwmElevated and not iwmElevated[1], title="IWM Elevated", style=shape.diamond, location=location.abovebar, color=color.new(color.yellow, 0), size=size.tiny, text="⭐")
 plotshape(showIwm and iwmBullishDiv and not iwmBullishDiv[1], title="IWM Bullish Div", style=shape.labelup, location=location.belowbar, color=color.new(color.aqua, 0), textcolor=color.black, size=size.small, text="💎")
 plotshape(showIwm and iwmBearishDiv and not iwmBearishDiv[1], title="IWM Bearish Div", style=shape.labeldown, location=location.abovebar, color=color.new(color.fuchsia, 0), textcolor=color.white, size=size.small, text="💎")
@@ -994,9 +1060,6 @@ plotshape(showAgg and aggTopEdge, title="Resonance Risk", style=shape.labeldown,
 //========================
 // Dashboard
 //========================
-displayUptrend = showSpy ? spyUptrend : showQqq ? qqqUptrend : showIwm ? iwmUptrend : (spyUptrend and qqqUptrend) or (spyUptrend and iwmUptrend) or (qqqUptrend and iwmUptrend)
-displayElevated = showSpy ? spyElevated : showQqq ? qqqElevated : showIwm ? iwmElevated : (spyElevated or qqqElevated or iwmElevated)
-
 thresholdModeText = useAdaptive ? "Adaptive" : "Fixed"
 
 //========================
@@ -1038,18 +1101,9 @@ fontSize = f_getFontSize(dashboardFontSize)
 fontSizeHeader = dashboardFontSize == "Large" ? size.large : dashboardFontSize == "Normal" ? size.normal : size.normal
 
 // Prepare signal text (used in both modes)
-totalColor = displayScore >= adjBotThreshold ? color.lime : displayScore <= adjTopThreshold ? (displayUptrend ? color.yellow : color.red) : color.gray
-signalText = displayScore >= adjStrongBotThreshold ? "PANIC LOW" :
-             displayScore >= adjBotThreshold ? "BUY ZONE" :
-             displayElevated ? "ELEVATED" :
-             displayScore <= adjStrongTopThreshold ? "REDUCE" :
-             displayScore <= adjTopThreshold ? "CAUTION" :
-             "HOLD"
-signalEmoji = displayScore >= adjStrongBotThreshold ? "🚀" : 
-              displayScore >= adjBotThreshold ? "📈" : 
-              displayElevated ? "⭐" :
-              displayScore <= adjStrongTopThreshold ? "⚠️" : 
-              displayScore <= adjTopThreshold ? "⚡" : "⚪"
+totalColor = panelBuyActive ? color.lime : panelElevatedSignal ? color.yellow : panelSellActive ? color.red : color.gray
+signalText = panelStrongBotSignal ? "PANIC LOW" : panelBotOnlySignal ? "BUY ZONE" : panelElevatedSignal ? "ELEVATED" : panelStrongTopSignal ? "REDUCE" : panelTopOnlySignal ? "CAUTION" : "HOLD"
+signalEmoji = panelStrongBotSignal ? "🚀" : panelBotOnlySignal ? "📈" : panelElevatedSignal ? "⭐" : panelStrongTopSignal ? "⚠️" : panelTopOnlySignal ? "⚡" : "⚪"
 
 // Divergence display
 divColor = displayBullishDiv ? color.aqua : displayBearishDiv ? color.fuchsia : color.gray
@@ -1076,7 +1130,7 @@ filterColor = isBearMarketFiltered ? color.gray : isBuyZoneFiltered ? color.yell
 hasFilterStatus = isBearMarketFiltered or isBuyZoneFiltered or isSellZoneFiltered
 
 // v7.3 Dynamic background color (动态背景色)
-signalBgColor = displayScore >= adjBotThreshold ? c_bg_buy : displayScore <= adjTopThreshold ? c_bg_sell : c_bg_hold
+signalBgColor = panelBuyActive ? c_bg_buy : (panelElevatedSignal or panelSellActive) ? c_bg_sell : c_bg_hold
 
 // v7.2: Prepare market status indicators for three markets
 spyStatus = f_marketStatus(spyScore, adjBotThreshold, adjTopThreshold)
@@ -1170,15 +1224,16 @@ min_alert_level = min_alert_level_str == "📈 Lv1 Buy Zone" ? 1 : min_alert_lev
 
 // 智能提醒直接复用图上绘制所用的 trigger / edge，避免提醒与图形口径漂移
 // Smart alerts reuse the same plotted trigger / edge signals to stay aligned with chart markers
-autoBotTrig = (isSpy and spyBotTrig and (spyStrongBot or spyBot)) or (isQqq and qqqBotTrig and (qqqStrongBot or qqqBot)) or (isIwm and iwmBotTrig and (iwmStrongBot or iwmBot))
-autoStrongBotTrig = (isSpy and spyBotTrig and spyStrongBot) or (isQqq and qqqBotTrig and qqqStrongBot) or (isIwm and iwmBotTrig and iwmStrongBot)
-autoTopTrig = (isSpy and spyTopTrig and (spyStrongTop or spyTop)) or (isQqq and qqqTopTrig and (qqqStrongTop or qqqTop)) or (isIwm and iwmTopTrig and (iwmStrongTop or iwmTop))
-autoStrongTopTrig = (isSpy and spyTopTrig and spyStrongTop) or (isQqq and qqqTopTrig and qqqStrongTop) or (isIwm and iwmTopTrig and iwmStrongTop)
-autoBullishDivTrig = (isSpy and spyBullishDiv and not spyBullishDiv[1]) or (isQqq and qqqBullishDiv and not qqqBullishDiv[1]) or (isIwm and iwmBullishDiv and not iwmBullishDiv[1])
-autoBearishDivTrig = (isSpy and spyBearishDiv and not spyBearishDiv[1]) or (isQqq and qqqBearishDiv and not qqqBearishDiv[1]) or (isIwm and iwmBearishDiv and not iwmBearishDiv[1])
-autoElevatedTrig = (isSpy and spyElevated and not spyElevated[1]) or (isQqq and qqqElevated and not qqqElevated[1]) or (isIwm and iwmElevated and not iwmElevated[1])
+autoBotTrig = displayBotTrig
+autoStrongBotTrig = displayStrongBotPlotTrig
+autoTopTrig = displayTopTrig
+autoStrongTopTrig = displayStrongTopPlotTrig
+autoBullishDivTrig = showSpy ? (spyBullishDiv and not spyBullishDiv[1]) : showQqq ? (qqqBullishDiv and not qqqBullishDiv[1]) : showIwm ? (iwmBullishDiv and not iwmBullishDiv[1]) : false
+autoBearishDivTrig = showSpy ? (spyBearishDiv and not spyBearishDiv[1]) : showQqq ? (qqqBearishDiv and not qqqBearishDiv[1]) : showIwm ? (iwmBearishDiv and not iwmBearishDiv[1]) : false
+autoElevatedTrig = displayElevatedPlotTrig
 autoBotResonanceTrig = aggBottomEdge
 autoTopResonanceTrig = aggTopEdge
+alertTickerLabel = showSpy ? "SPY" : showQqq ? "QQQ" : showIwm ? "IWM" : showAgg ? "AGG" : syminfo.ticker
 
 // 信号等级函数 (优先级越高值越大)
 // 5=恐慌+共振 | 4=恐慌低点 | 3=共振 | 2=背离 | 1=低吸/观望
@@ -1236,7 +1291,7 @@ if enable_smart_alert and regular_session_alerts
     should_alert_buy = live_intraday_latch_mode ? buy_signal_active and current_buy_level >= min_alert_level and (buy_alert_armed or current_buy_level > buy_alert_latched_level or (buy_alert_level_sent > 0 and current_buy_level > buy_alert_level_sent)) : buy_signal_active and current_buy_level >= min_alert_level and (current_buy_level > buy_alert_level_published or (buy_alert_level_sent > 0 and current_buy_level > buy_alert_level_sent))
 
     if should_alert_buy
-        msg = str.format("{0}: 🟢 BUY Lv{1} → ", syminfo.ticker, current_buy_level)
+        msg = str.format("{0}: 🟢 BUY Lv{1} → ", alertTickerLabel, current_buy_level)
 
         // Signal labels (combo priority)
         if autoStrongBotTrig and autoBotResonanceTrig
@@ -1270,7 +1325,7 @@ if enable_smart_alert and regular_session_alerts
     should_alert_sell = live_intraday_latch_mode ? sell_signal_active and current_sell_level >= min_alert_level and (sell_alert_armed or current_sell_level > sell_alert_latched_level or (sell_alert_level_sent > 0 and current_sell_level > sell_alert_level_sent)) : sell_signal_active and current_sell_level >= min_alert_level and (current_sell_level > sell_alert_level_published or (sell_alert_level_sent > 0 and current_sell_level > sell_alert_level_sent))
 
     if should_alert_sell
-        msg = str.format("{0}: 🔴 RISK Lv{1} → ", syminfo.ticker, current_sell_level)
+        msg = str.format("{0}: 🔴 RISK Lv{1} → ", alertTickerLabel, current_sell_level)
 
         // Signal labels (combo priority)
         if autoStrongTopTrig and autoTopResonanceTrig
