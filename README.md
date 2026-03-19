@@ -170,6 +170,7 @@ Actual layout in code: **2 rows x 1 column**
 
 - `filterStatus` tells you whether the setup is being blocked by a filter.
 - In `SPY / QQQ / IWM` display modes, `signalText` follows the latest plotted chart signal state, so the dashboard stays aligned with the K-line marker sequence.
+- On realtime bars, once a plotted buy/risk marker fires intrabar, the dashboard keeps that bar's latest plotted state instead of reverting if the raw condition fades before close.
 - `signalText` tells you the current displayed market state: `PANIC LOW`, `BUY ZONE`, `HOLD`, `ELEVATED`, `CAUTION`, or `REDUCE`.
 
 Read them together:
@@ -194,10 +195,13 @@ Alert behavior:
 
 - Smart alerts reuse the same `Trig / Edge` signals that drive plotted chart markers, instead of firing directly from raw live state
 - Smart alerts follow the currently displayed plotted K-line signal path, so manual `Display Mode` changes stay visually aligned with alerts
+- On realtime bars, plotted signals are bar-latched: once a buy/risk marker fires intrabar, that bar keeps the marker and aligned panel state after the close
+- Same-level or downgraded alerts do not re-fire inside the same bar even if the live condition flickers off and back on
 - `PANIC LOW` / `REDUCE` upgrades from an already-active `BUY ZONE` / `CAUTION` still count as fresh strict upgrades for both chart markers and alerts
 - Same-bar upgrade alerts are allowed
 - `varip` state prevents duplicate lower-level alerts in the same bar
 - Published alert levels also use rollback-safe `varip` state, so realtime bars do not re-fire the same level on each tick
+- In manual `SPY / QQQ / IWM` display modes, AGG resonance does not publish a separate hidden-symbol alert path; resonance-only alerts remain on the `AGG(共振)` path
 - On `intraday + Live Alert Data`, same-side alerts are latched for the regular session, so Lv1 does not re-fire repeatedly during the day
 - Live intraday resets those side latches only at the next regular-session open; same-level repeats and downgrades stay muted during the current session
 - Live intraday still allows strict level upgrades only (`Lv1 -> Lv3/4/5`)
