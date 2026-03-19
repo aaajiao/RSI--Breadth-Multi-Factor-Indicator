@@ -199,7 +199,7 @@ Alert behavior:
 - Smart alerts publish from the current visible trigger level on that tick (no delayed replay from a stale intrabar max after the visible trigger has faded)
 - On realtime bars, plotted signals are bar-latched: once a buy/risk marker fires intrabar, that bar keeps the marker and aligned panel state after the close
 - Same-level or downgraded alerts do not re-fire inside the same bar even if the live condition flickers off and back on
-- `PANIC LOW` / `REDUCE` upgrades from an already-active `BUY ZONE` / `CAUTION` still count as fresh strict upgrades for both chart markers and alerts
+- `PANIC LOW` / `REDUCE` upgrades from an already-active `BUY ZONE` / `CAUTION` still count as fresh strict upgrades for chart markers; alert upgrades now publish only on later bars
 - Smart alerts are limited to one publish per bar; if both buy and risk qualify on the same tick, only the higher-level side publishes
 - `varip` state prevents duplicate lower-level alerts in the same bar
 - Published alert levels also use rollback-safe `varip` state, so realtime bars do not re-fire the same level on each tick
@@ -256,4 +256,4 @@ Pine Script has no local build system in this repo. Validation is manual:
 
 This indicator is for educational purposes only. Past performance does not guarantee future results.
 
-**Version**: 7.4 | **Pine Script**: v6 | **Updated**: 2026-03-11
+**Version**: 7.4 | **Pine Script**: v6 | **Updated**: 2026-03-19

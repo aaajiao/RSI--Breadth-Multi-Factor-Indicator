@@ -177,7 +177,7 @@ showDashboard = input.bool(true, "Show Dashboard 显示面板", group=grp6)
 // Dashboard Customization 面板自定义
 dashboardMode = input.string("Full", "Dashboard Mode 面板模式", 
     options=["Full", "Mobile"], group=grp6,
-    tooltip="Full: 完整11行详情 | Mobile: 精简3行核心信息\nFull: 11 rows detail | Mobile: 3 rows essential")
+    tooltip="Full: 完整7行详情 | Mobile: 精简2行核心信息\nFull: 7 rows detail | Mobile: 2 rows essential")
 
 dashboardPosition = input.string("Top Right", "Panel Position 面板位置", 
     options=["Top Left", "Top Right", "Bottom Left", "Bottom Right", 
@@ -1286,11 +1286,11 @@ if showDashboard and barstate.islast
 
 //========================
 // Smart Alert V2 (Enhanced from Adaptive RSI Pro)
-// 智能警报：信号等级系统 + K线内去重 + 跨K线防重发 + 升级触发
+// 智能警报：信号等级系统 + K线内去重 + 跨K线严格升级 + 跨K线防重发
 //========================
 grpAlert = "Alerts 警报"
 enable_smart_alert = input.bool(true, "Enable Smart Alert 启用智能警报", group=grpAlert, 
-    tooltip="V2智能警报：信号等级+升级触发+K线内去重+跨K线防重发\nV2 Smart Alert: signal levels + upgrades + same-bar dedup + cross-bar repeat suppression")
+    tooltip="V2智能警报：信号等级+单根K线去重+跨K线严格升级+跨K线防重发\nV2 Smart Alert: signal levels + one alert per bar + cross-bar strict upgrades + cross-bar repeat suppression")
 min_alert_level_str = input.string("📈 Lv1 Buy Zone", "Min Alert Level 最小警报等级",
     options=["📈 Lv1 Buy Zone", "💎 Lv2 Divergence", "🔥 Lv3 Resonance", "🚀 Lv4 Panic", "🚀🔥 Lv5 Combo"],
     group=grpAlert, tooltip="Lv1=买入/卖出区间(常见) | Lv2=背离(中等)\nLv3=共振(较少) | Lv4=恐慌/减仓(很少) | Lv5=组合(极少)\n═══════════════════════\nLv1=Buy/Sell zone(common) | Lv2=Divergence(medium)\nLv3=Resonance(rare) | Lv4=Panic/Reduce(very rare) | Lv5=Combo(extreme)")
