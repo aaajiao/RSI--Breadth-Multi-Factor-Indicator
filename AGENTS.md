@@ -260,16 +260,18 @@ Implementation details that matter:
 
 - Smart alerts must reuse the plotted `Trig / Edge` signals (`spyBotTrig`, `spyTopTrig`, `aggBottomEdge`, divergence/elevated edges, etc.); do not drive published alerts directly from raw active state.
 - Smart alerts must follow the currently displayed K-line signal path under `Display Mode`; manual `SPY / QQQ / IWM / AGG` selection must not leave alerts on a different symbol/state than the visible markers.
+- `Lv2 (DIVERGENCE)` / `Lv3 (RESONANCE)` are upgrade tags that require an existing visible base buy/risk trigger on the current display path; do not publish hidden standalone divergence-only or resonance-only alerts.
+- Smart alerts should publish from the current visible trigger level on that tick; do not delay-fire from stale intrabar max levels after the visible trigger path has faded.
 - Realtime plotted events are bar-latched: if a plotted buy/risk marker fires intrabar, that bar keeps the marker and aligned panel state even if the raw condition fades before close.
 - `PANIC LOW` / `REDUCE` plot markers must also fire on strict same-side upgrades from `BUY ZONE` / `CAUTION`, even if the base cooldown would suppress a duplicate weak signal.
 - The script uses `varip` state to deduplicate alerts within the same bar.
-- Same-bar alert upgrades are allowed if a higher level appears later in the bar.
+- Smart alerts are limited to one publish per bar; if buy and sell sides both qualify on the same tick, only the higher-level side is published.
 - Same-level or downgraded intrabar flicker must not re-arm duplicate alerts inside the same bar.
 - Buy and sell alert states are tracked separately.
 - Cross-bar alert state suppresses repeated alerts while the same side remains active at the same or lower level.
 - In manual `SPY / QQQ / IWM` display modes, AGG resonance must not publish a separate hidden-symbol alert path; resonance-only alerts belong to `AGG(共振)`.
 - On `intradayMode + useLiveData`, same-side alerts are latched for the full regular session and only re-arm at the next regular-session open.
-- Live intraday same-level repeats and downgrades stay muted during the current regular session; only strict upgrades may publish after the first alert.
+- Live intraday same-level repeats and downgrades stay muted during the current regular session; strict upgrades may publish only on later bars after the first alert.
 - `ELEVATED` is an entry/upgrade alert state, not a per-bar repeating alert.
 - Intraday smart alerts must be limited to `session.ismarket`; after-hours bars may update price, but they must not publish new alerts.
 - Alert messages include ticker, side, level, signal tags, score, trend, and drawdown context where applicable.

@@ -1312,10 +1312,22 @@ alertTickerLabel = showSpy ? "SPY" : showQqq ? "QQQ" : showIwm ? "IWM" : showAgg
 // 信号等级函数 (优先级越高值越大)
 // 5=恐慌+共振 | 4=恐慌低点 | 3=共振 | 2=背离 | 1=低吸/观望
 f_buy_level(_strongBot, _bot, _resonance, _div) =>
-    _strongBot and _resonance ? 5 : _strongBot ? 4 : _resonance ? 3 : _div ? 2 : _bot ? 1 : 0
+    // 仅在当前显示路径已有主买入触发时才允许 Lv2/Lv3 升级，避免“只提醒不落图”
+    // Only allow Lv2/Lv3 upgrades when a visible base buy trigger exists on the current display path.
+    hasBaseBuy = _strongBot or _bot
+    if not hasBaseBuy
+        0
+    else
+        _strongBot and _resonance ? 5 : _strongBot ? 4 : _resonance ? 3 : _div ? 2 : 1
 
 f_sell_level(_strongTop, _top, _resonance, _div, _elevated) =>
-    _strongTop and _resonance ? 5 : _strongTop ? 4 : _resonance ? 3 : _div ? 2 : (_top or _elevated) ? 1 : 0
+    // 仅在当前显示路径已有主风险触发时才允许 Lv2/Lv3 升级，避免“只提醒不落图”
+    // Only allow Lv2/Lv3 upgrades when a visible base risk trigger exists on the current display path.
+    hasBaseSell = _strongTop or _top or _elevated
+    if not hasBaseSell
+        0
+    else
+        _strongTop and _resonance ? 5 : _strongTop ? 4 : _resonance ? 3 : _div ? 2 : 1
 
 // varip: 在实时K线的多次重算间保留状态，避免 rollback 导致同级别警报重复触发
 varip int buy_alert_level_sent = 0
@@ -1326,22 +1338,18 @@ varip bool buy_alert_armed = true
 varip bool sell_alert_armed = true
 varip int buy_alert_latched_level = 0
 varip int sell_alert_latched_level = 0
-varip int buy_bar_max_level = 0
-varip int sell_bar_max_level = 0
+varip bool smart_alert_fired_this_bar = false
 
 // 新K线开始时重置
 if barstate.isnew
     buy_alert_level_sent := 0
     sell_alert_level_sent := 0
-    buy_bar_max_level := 0
-    sell_bar_max_level := 0
+    smart_alert_fired_this_bar := false
 
 current_buy_level = f_buy_level(autoStrongBotTrig, autoBotTrig, autoBotResonanceTrig, autoBullishDivTrig)
 current_sell_level = f_sell_level(autoStrongTopTrig, autoTopTrig, autoTopResonanceTrig, autoBearishDivTrig, autoElevatedTrig)
-buy_bar_max_level := math.max(buy_bar_max_level, current_buy_level)
-sell_bar_max_level := math.max(sell_bar_max_level, current_sell_level)
-buy_signal_active = buy_bar_max_level > 0
-sell_signal_active = sell_bar_max_level > 0
+buy_signal_active = current_buy_level > 0
+sell_signal_active = current_sell_level > 0
 regular_session_alerts = not intradayMode or session.ismarket
 live_intraday_latch_mode = intradayMode and useLiveData
 prev_regular_session = bar_index > 0 ? session.ismarket[1] : false
@@ -1368,69 +1376,78 @@ else if new_live_intraday_session
 // Intraday smart alerts only fire during regular market hours to avoid repeated after-hours alerts on frozen breadth data
 if enable_smart_alert and regular_session_alerts
     // === 买入信号 ===
-    // 触发条件：首次发布 / 跨K线升级 / 同K线升级，禁止持续状态重复提醒
-    // Trigger: first publish, cross-bar upgrade, or same-bar upgrade only
-    should_alert_buy = buy_signal_active and buy_bar_max_level >= min_alert_level and buy_bar_max_level > buy_alert_level_sent and (live_intraday_latch_mode ? (buy_alert_armed or buy_bar_max_level > buy_alert_latched_level) : buy_bar_max_level > buy_alert_level_published)
+    // 触发条件：首次发布 / 跨K线升级；同一根K线只允许发布一次，避免重复提醒
+    // Trigger: first publish / cross-bar upgrade; allow only one smart alert per bar to prevent repeats.
+    should_alert_buy_base = buy_signal_active and current_buy_level >= min_alert_level and current_buy_level > buy_alert_level_sent and (live_intraday_latch_mode ? (buy_alert_armed or current_buy_level > buy_alert_latched_level) : current_buy_level > buy_alert_level_published)
+    should_alert_sell_base = sell_signal_active and current_sell_level >= min_alert_level and current_sell_level > sell_alert_level_sent and (live_intraday_latch_mode ? (sell_alert_armed or current_sell_level > sell_alert_latched_level) : current_sell_level > sell_alert_level_published)
 
-    if should_alert_buy
-        msg = str.format("{0}: 🟢 BUY Lv{1} → ", alertTickerLabel, buy_bar_max_level)
+    should_alert_buy = should_alert_buy_base
+    should_alert_sell = should_alert_sell_base
 
-        // Signal labels (combo priority)
-        if autoStrongBotTrig and autoBotResonanceTrig
-            msg := msg + "🚀Panic+🔥Resonance "
-        else if autoStrongBotTrig
-            msg := msg + "🚀Panic Low "
-        else if autoBotResonanceTrig
-            msg := msg + "🔥Resonance "
-        else if autoBotTrig
-            msg := msg + "📈Buy Zone "
-        if autoBullishDivTrig
-            msg := msg + "💎Divergence "
-
-        // v7.0 Context info (quality + drawdown + score)
-        trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
-        dd_ctx = displayDrawdown >= 5 ? str.format(" DD:{0,number,#}%", displayDrawdown) : ""
-        msg := msg + str.format("| Score:{0,number,#.1} ({1}){2} {3}",
-            displayScore, displayBuyQuality, dd_ctx, trend_ctx)
-
-        alert(msg, alert.freq_all)
-        buy_alert_level_sent := buy_bar_max_level
-        if live_intraday_latch_mode
-            buy_alert_armed := false
-            buy_alert_latched_level := buy_bar_max_level
+    // 若买卖同tick都满足，只发布等级更高的一侧
+    // If both sides qualify on the same tick, publish only the higher-level side.
+    if should_alert_buy_base and should_alert_sell_base
+        if current_sell_level > current_buy_level
+            should_alert_buy := false
         else
-            buy_alert_level_published := buy_bar_max_level
+            should_alert_sell := false
 
-    // === 卖出/风险信号 ===
-    // 触发条件：首次发布 / 跨K线升级 / 同K线升级，持续 Elevated 不重复提醒
-    // Trigger: first publish, cross-bar upgrade, or same-bar upgrade only
-    should_alert_sell = sell_signal_active and sell_bar_max_level >= min_alert_level and sell_bar_max_level > sell_alert_level_sent and (live_intraday_latch_mode ? (sell_alert_armed or sell_bar_max_level > sell_alert_latched_level) : sell_bar_max_level > sell_alert_level_published)
+    if not smart_alert_fired_this_bar
+        if should_alert_buy
+            msg = str.format("{0}: 🟢 BUY Lv{1} → ", alertTickerLabel, current_buy_level)
 
-    if should_alert_sell
-        msg = str.format("{0}: 🔴 RISK Lv{1} → ", alertTickerLabel, sell_bar_max_level)
+            // Signal labels (combo priority)
+            if autoStrongBotTrig and autoBotResonanceTrig
+                msg := msg + "🚀Panic+🔥Resonance "
+            else if autoStrongBotTrig
+                msg := msg + "🚀Panic Low "
+            else if autoBotResonanceTrig
+                msg := msg + "🔥Resonance "
+            else if autoBotTrig
+                msg := msg + "📈Buy Zone "
+            if autoBullishDivTrig
+                msg := msg + "💎Divergence "
 
-        // Signal labels (combo priority)
-        if autoStrongTopTrig and autoTopResonanceTrig
-            msg := msg + "⚠️Reduce+❄️Resonance "
-        else if autoStrongTopTrig
-            msg := msg + "⚠️Reduce "
-        else if autoTopResonanceTrig
-            msg := msg + "❄️Resonance "
-        else if autoTopTrig
-            msg := msg + "⚡Caution "
-        else if autoElevatedTrig
-            msg := msg + "⭐Elevated "
-        if autoBearishDivTrig
-            msg := msg + "💎Divergence "
+            // v7.0 Context info (quality + drawdown + score)
+            trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
+            dd_ctx = displayDrawdown >= 5 ? str.format(" DD:{0,number,#}%", displayDrawdown) : ""
+            msg := msg + str.format("| Score:{0,number,#.1} ({1}){2} {3}",
+                displayScore, displayBuyQuality, dd_ctx, trend_ctx)
 
-        // v7.0 Context info (score + trend)
-        trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
-        msg := msg + str.format("| Score:{0,number,#.1} {1}", displayScore, trend_ctx)
+            alert(msg, alert.freq_all)
+            smart_alert_fired_this_bar := true
+            buy_alert_level_sent := current_buy_level
+            if live_intraday_latch_mode
+                buy_alert_armed := false
+                buy_alert_latched_level := current_buy_level
+            else
+                buy_alert_level_published := current_buy_level
+        else if should_alert_sell
+            msg = str.format("{0}: 🔴 RISK Lv{1} → ", alertTickerLabel, current_sell_level)
 
-        alert(msg, alert.freq_all)
-        sell_alert_level_sent := sell_bar_max_level
-        if live_intraday_latch_mode
-            sell_alert_armed := false
-            sell_alert_latched_level := sell_bar_max_level
-        else
-            sell_alert_level_published := sell_bar_max_level
+            // Signal labels (combo priority)
+            if autoStrongTopTrig and autoTopResonanceTrig
+                msg := msg + "⚠️Reduce+❄️Resonance "
+            else if autoStrongTopTrig
+                msg := msg + "⚠️Reduce "
+            else if autoTopResonanceTrig
+                msg := msg + "❄️Resonance "
+            else if autoTopTrig
+                msg := msg + "⚡Caution "
+            else if autoElevatedTrig
+                msg := msg + "⭐Elevated "
+            if autoBearishDivTrig
+                msg := msg + "💎Divergence "
+
+            // v7.0 Context info (score + trend)
+            trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
+            msg := msg + str.format("| Score:{0,number,#.1} {1}", displayScore, trend_ctx)
+
+            alert(msg, alert.freq_all)
+            smart_alert_fired_this_bar := true
+            sell_alert_level_sent := current_sell_level
+            if live_intraday_latch_mode
+                sell_alert_armed := false
+                sell_alert_latched_level := current_sell_level
+            else
+                sell_alert_level_published := current_sell_level
