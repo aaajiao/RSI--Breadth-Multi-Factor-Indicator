@@ -24,7 +24,7 @@ The current `RSI+` script implements these modules:
 - **Trend filter**: converts sell-side signals into `ELEVATED` during uptrends.
 - **Resonance engine**: detects multi-market agreement across SPY / QQQ / IWM.
 - **Dashboard**: compact `Full` and `Mobile` modes.
-- **Smart alerts V2**: level-based alerts with bar-level dedup and cross-bar upgrade logic.
+- **Smart alerts V2**: level-based alerts keyed to the latest bar's first visible K-line signal, with bar-level dedup and cross-bar upgrade logic.
 
 ### Markets and Data Sources
 
@@ -196,12 +196,12 @@ Alert behavior:
 - Smart alerts reuse the same `Trig / Edge` signals that drive plotted chart markers, instead of firing directly from raw live state
 - Smart alerts follow the currently displayed plotted K-line signal path, so manual `Display Mode` changes stay visually aligned with alerts
 - `Lv2 (DIVERGENCE)` and `Lv3 (RESONANCE)` are upgrade tags on a visible base buy/risk trigger; divergence-only or resonance-only states do not publish hidden standalone alerts
-- Smart alerts publish from the current visible trigger level on that tick (no delayed replay from a stale intrabar max after the visible trigger has faded)
+- Smart alerts publish when the latest realtime bar first shows a visible trigger level on that tick; later historical backfill does not cancel or replay that reminder
 - On realtime bars, plotted signals are bar-latched: once a buy/risk marker fires intrabar, that bar keeps the marker and aligned panel state after the close
 - Same-level or downgraded alerts do not re-fire inside the same bar even if the live condition flickers off and back on
 - `PANIC LOW` / `REDUCE` upgrades from an already-active `BUY ZONE` / `CAUTION` still count as fresh strict upgrades for chart markers; alert upgrades now publish only on later bars
 - Smart alerts are limited to one publish per bar; if both buy and risk qualify on the same tick, only the higher-level side publishes
-- `varip` state prevents duplicate lower-level alerts in the same bar
+- `varip` state remembers the latest bar's observed visible level, so same-bar flicker or later historical backfill does not erase the first reminder
 - Published alert levels also use rollback-safe `varip` state, so realtime bars do not re-fire the same level on each tick
 - In manual `SPY / QQQ / IWM` display modes, AGG resonance does not publish a separate hidden-symbol alert path; resonance-only alerts remain on the `AGG(共振)` path
 - On `intraday + Live Alert Data`, same-side alerts are latched for the regular session, so Lv1 does not re-fire repeatedly during the day

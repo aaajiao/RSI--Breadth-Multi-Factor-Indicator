@@ -1290,7 +1290,7 @@ if showDashboard and barstate.islast
 //========================
 grpAlert = "Alerts 警报"
 enable_smart_alert = input.bool(true, "Enable Smart Alert 启用智能警报", group=grpAlert, 
-    tooltip="V2智能警报：信号等级+单根K线去重+跨K线严格升级+跨K线防重发\nV2 Smart Alert: signal levels + one alert per bar + cross-bar strict upgrades + cross-bar repeat suppression")
+    tooltip="V2智能警报：信号等级+最新K线首次可见即提醒+单根K线去重+跨K线严格升级+跨K线防重发\nV2 Smart Alert: signal levels + alert on the latest bar's first visible signal + one alert per bar + cross-bar strict upgrades + cross-bar repeat suppression")
 min_alert_level_str = input.string("📈 Lv1 Buy Zone", "Min Alert Level 最小警报等级",
     options=["📈 Lv1 Buy Zone", "💎 Lv2 Divergence", "🔥 Lv3 Resonance", "🚀 Lv4 Panic", "🚀🔥 Lv5 Combo"],
     group=grpAlert, tooltip="Lv1=买入/卖出区间(常见) | Lv2=背离(中等)\nLv3=共振(较少) | Lv4=恐慌/减仓(很少) | Lv5=组合(极少)\n═══════════════════════\nLv1=Buy/Sell zone(common) | Lv2=Divergence(medium)\nLv3=Resonance(rare) | Lv4=Panic/Reduce(very rare) | Lv5=Combo(extreme)")
@@ -1339,15 +1339,35 @@ varip bool sell_alert_armed = true
 varip int buy_alert_latched_level = 0
 varip int sell_alert_latched_level = 0
 varip bool smart_alert_fired_this_bar = false
+varip int observed_display_path = 0
+varip int observed_buy_level = 0
+varip int observed_sell_level = 0
 
 // 新K线开始时重置
 if barstate.isnew
     buy_alert_level_sent := 0
     sell_alert_level_sent := 0
     smart_alert_fired_this_bar := false
+    observed_buy_level := 0
+    observed_sell_level := 0
 
-current_buy_level = f_buy_level(autoStrongBotTrig, autoBotTrig, autoBotResonanceTrig, autoBullishDivTrig)
-current_sell_level = f_sell_level(autoStrongTopTrig, autoTopTrig, autoTopResonanceTrig, autoBearishDivTrig, autoElevatedTrig)
+int display_path_id = showSpy ? 1 : showQqq ? 2 : showIwm ? 3 : 4
+if observed_display_path != display_path_id
+    observed_display_path := display_path_id
+    observed_buy_level := 0
+    observed_sell_level := 0
+
+int visible_buy_level_now = f_buy_level(autoStrongBotTrig, autoBotTrig, autoBotResonanceTrig, autoBullishDivTrig)
+int visible_sell_level_now = f_sell_level(autoStrongTopTrig, autoTopTrig, autoTopResonanceTrig, autoBearishDivTrig, autoElevatedTrig)
+
+// Realtime alerts should key off the latest bar's first visible K-line state.
+// Once this bar has visibly shown a level, later historical backfill should not cancel that reminder.
+if barstate.isrealtime
+    observed_buy_level := int(math.max(observed_buy_level, visible_buy_level_now))
+    observed_sell_level := int(math.max(observed_sell_level, visible_sell_level_now))
+
+int current_buy_level = barstate.isrealtime ? observed_buy_level : visible_buy_level_now
+int current_sell_level = barstate.isrealtime ? observed_sell_level : visible_sell_level_now
 buy_signal_active = current_buy_level > 0
 sell_signal_active = current_sell_level > 0
 regular_session_alerts = not intradayMode or session.ismarket
@@ -1376,8 +1396,8 @@ else if new_live_intraday_session
 // Intraday smart alerts only fire during regular market hours to avoid repeated after-hours alerts on frozen breadth data
 if enable_smart_alert and regular_session_alerts
     // === 买入信号 ===
-    // 触发条件：首次发布 / 跨K线升级；同一根K线只允许发布一次，避免重复提醒
-    // Trigger: first publish / cross-bar upgrade; allow only one smart alert per bar to prevent repeats.
+    // 触发条件：当前最新K线首次可见 / 跨K线升级；同一根K线只允许发布一次，避免重复提醒
+    // Trigger: latest bar first visible signal / cross-bar upgrade; allow only one smart alert per bar to prevent repeats.
     should_alert_buy_base = buy_signal_active and current_buy_level >= min_alert_level and current_buy_level > buy_alert_level_sent and (live_intraday_latch_mode ? (buy_alert_armed or current_buy_level > buy_alert_latched_level) : current_buy_level > buy_alert_level_published)
     should_alert_sell_base = sell_signal_active and current_sell_level >= min_alert_level and current_sell_level > sell_alert_level_sent and (live_intraday_latch_mode ? (sell_alert_armed or current_sell_level > sell_alert_latched_level) : current_sell_level > sell_alert_level_published)
 
