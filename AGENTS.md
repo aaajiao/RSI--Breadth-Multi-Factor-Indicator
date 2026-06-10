@@ -8,7 +8,7 @@
 |------|-------|
 | **Language** | Pine Script v6 |
 | **Main file** | `RSI+` |
-| **Current version** | `v7.4` |
+| **Current version** | `v7.5` |
 | **Primary markets** | `SPY`, `QQQ`, `IWM` |
 | **Use case** | US index market timing |
 
@@ -175,6 +175,7 @@ These names must stay consistent across script comments, README, alerts, and doc
 Important nuance:
 
 - In uptrends with `useTrendFilter = true`, sell-side states display as `ELEVATED` instead of `CAUTION` or `REDUCE`.
+- `ELEVATED` is gated by the sell-side signal quality filter the same way as `CAUTION` and `REDUCE`; with `useSignalQuality = true`, C-grade conditions do not display or alert as `ELEVATED`.
 - Divergence is both a displayed overlay and a possible buy-side assist.
 - Resonance is cross-market logic, not a single score threshold.
 
@@ -217,7 +218,7 @@ The actual rendered layouts in `RSI+` are:
 - Row 1: centered score bar
 - Row 2: RSI + volume
 - Row 3: `FI + TW` in daily mode, `ADD + TW` in intraday mode; the compact `TW` slot still renders in intraday mode even though `ADD` drives the breadth score there
-- Row 4: trend + divergence + quality
+- Row 4: trend + divergence + quality; the quality factor count renders as `x/4` in daily mode and `x/3` in intraday mode (3 factors: RSI / Vol / ADD)
 - Row 5: drawdown + filter status
 - Row 6: `SPY / QQQ / IWM` status + resonance icon
 
@@ -238,7 +239,9 @@ Do not document old `11-row` or `3-row` layouts. The current output code is `7` 
 | `👀` | no active filter block |
 | `✋ WAIT` | buy-zone score exists but signal is filtered out |
 | `☕ HOLD` | sell threshold hit but uptrend blocks the sell |
-| `🚫` | downtrend buy-zone score while trend filter is active |
+| `🚫` | downtrend buy-zone score while trend filter is active and no buy signal is plotted/active |
+
+Sell-side comparisons for `☕ HOLD` and for hold-zone / zone-exit detection use `displaySellScore` (raw sell score, no drawdown bonus), not the displayed buy score; a large drawdown bonus must not inflate sell-side checks.
 
 ## Alert System
 
@@ -270,8 +273,10 @@ Implementation details that matter:
 - `varip` observation state should remember the latest bar's highest visible level for the current display path, so the first visible reminder survives later same-bar recalculations.
 - Buy and sell alert states are tracked separately.
 - Cross-bar alert state suppresses repeated alerts while the same side remains active at the same or lower level.
-- In manual `SPY / QQQ / IWM` display modes, AGG resonance must not publish a separate hidden-symbol alert path; resonance-only alerts belong to `AGG(共振)`.
-- On `intradayMode + useLiveData`, same-side alerts are latched for the full regular session and only re-arm at the next regular-session open.
+- Resonance is an upgrade tag on every display path: in manual `SPY / QQQ / IWM` modes, a visible base buy/risk trigger that coincides with the resonance edge (`aggBottomEdge` / `aggTopEdge`) on the same bar publishes `Lv3` (base + resonance) or `Lv5` (strong + resonance, e.g. `PANIC LOW` + `RESONANCE`).
+- Resonance-only alerts (no visible base trigger on the current display path) still publish only on `AGG(共振)`; AGG must not publish a separate hidden-symbol alert path in manual `SPY / QQQ / IWM` modes.
+- The `AGG(共振)` path publishes `Lv3` only; it has no strong or divergence states.
+- On `intradayMode + useLiveData`, same-side alerts are latched for the full regular session and re-arm on the first regular-session bar of each new trading day, detected via a date key (`live_alert_session_day`); this must also work on RTH-only charts, where `session.ismarket` never flips false between days.
 - Live intraday same-level repeats and downgrades stay muted during the current regular session; strict upgrades may publish only on later bars after the first alert.
 - `ELEVATED` is an entry/upgrade alert state, not a per-bar repeating alert.
 - Intraday smart alerts must be limited to `session.ismarket`; after-hours bars may update price, but they must not publish new alerts.
@@ -302,6 +307,7 @@ Rules:
 - Do not introduce lookahead bias outside `f_secDailyLive()`.
 - Intraday SPY / QQQ / IWM / ADD requests should inherit the chart session modifier.
 - `ADD`, `TW/FI`, and `UVOL/DVOL` live values should freeze outside `session.ismarket`; do not let regular-session values drift through post-market bars.
+- Intraday `ADD` is also `na`-guarded during the regular session (`nz(addValueRaw, addValue[1])`) so a missing ADD bar does not cause transient score drops.
 
 ### State and Cooldown
 
@@ -336,12 +342,21 @@ Always guard:
 - Alert docs must reflect the current `Lv1` to `Lv5` level system.
 - All user-facing text added to the script should remain bilingual (`English / 中文`).
 
+## Known Limitations
+
+Accepted design constraints; do not describe them as bugs or silently "fix" them:
+
+- Historical intraday bars read end-of-day daily breadth values through `f_secDailyLive()` lookahead, so historical intraday markers can look better than what realtime would have shown; realtime alerts use developing values. Historical markers are not a backtest of live behavior.
+- On daily charts, breadth/volume factors come from the previous confirmed day (`f_secDaily()`, 1-day lag); the `useLiveData` option only affects intraday charts.
+- Futures tickers (`ES` / `NQ` / `RTY` etc.) are detected best-effort; session gating and breadth freezing are designed for US equity regular hours and are not validated for futures sessions.
+
 ## Validation Checklist
 
 - [ ] Script compiles in TradingView
 - [ ] SPY / QQQ / IWM logic still works
 - [ ] Daily and intraday paths both behave correctly
 - [ ] Extended-session intraday charts do not publish any smart alerts after the regular close
+- [ ] RTH-only intraday charts re-arm latched live alerts on the first regular-session bar of each new trading day
 - [ ] Dashboard Full/Mobile output matches docs
 - [ ] Alert labels and thresholds match docs
 - [ ] README updated when behavior changes

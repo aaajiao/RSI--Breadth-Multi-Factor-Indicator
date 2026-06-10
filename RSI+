@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v7.4", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.5", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -87,19 +87,19 @@ grp2 = "Signal Thresholds 信号阈值 (%)"
 
 buyThresholdPct = input.int(50, "Buy Sensitivity 买入灵敏度 %", 
     minval=25, maxval=75, step=5, group=grp2,
-    tooltip="控制买入信号触发难度\n50%=平衡 | <50%=更严格 | >50%=更灵敏\n" +
+    tooltip="控制买入信号触发难度\n50%=平衡 | <50%=更灵敏 | >50%=更严格\n" +
             "═══════════════════════\n" +
             "📈 Buy Zone = 此值\n🚀 Panic Low = 此值 + 25%\n" +
             "═══════════════════════\n" +
-            "Buy signal sensitivity\n50%=Balanced | <50%=Stricter | >50%=Sensitive")
+            "Buy signal sensitivity\n50%=Balanced | <50%=More sensitive | >50%=Stricter")
 
 sellThresholdPct = input.int(45, "Sell Sensitivity 卖出灵敏度 %", 
     minval=25, maxval=75, step=5, group=grp2,
-    tooltip="控制卖出信号触发难度\n45%=平衡 | <45%=更严格 | >45%=更灵敏\n" +
+    tooltip="控制卖出信号触发难度\n45%=平衡 | <45%=更灵敏 | >45%=更严格\n" +
             "═══════════════════════\n" +
             "⚡ Caution = 此值\n⚠️ Reduce = 此值 + 25%\n" +
             "═══════════════════════\n" +
-            "Sell signal sensitivity\n45%=Balanced | <45%=Stricter | >45%=Sensitive")
+            "Sell signal sensitivity\n45%=Balanced | <45%=More sensitive | >45%=Stricter")
 
 // 固定偏移量：强信号比弱信号高25%
 // Fixed offset: strong signal is 25% higher than weak signal
@@ -595,7 +595,7 @@ if intradayMode and useLiveData
 addValueRaw = f_sec(addSym, close)
 float addValue = addValueRaw
 if intradayMode
-    addValue := session.ismarket ? addValueRaw : nz(addValue[1], addValueRaw)
+    addValue := session.ismarket ? nz(addValueRaw, addValue[1]) : nz(addValue[1], addValueRaw)
 
 //========================
 // Dual Volatility System & Auto-Adaptive Lookback (双重波动率系统)
@@ -640,10 +640,6 @@ adaptiveLookback_raw = lookbackMode == "Custom" ? lookbackCustom :
 // 在图表早期，bar_index 可能小于计算出的 lookback
 adaptiveLookback = int(math.min(adaptiveLookback_raw, bar_index))
 
-// Step 7: 健康度指标（大盘指数优化：分布宽度阈值 12）
-health_sample_coverage = bar_index >= adaptiveLookback_raw * 0.8
-health_stat_valid = adaptiveLookback >= stat_required * 0.9
-
 //========================
 // Adaptive Threshold Selection (自适应阈值选择)
 //========================
@@ -684,10 +680,6 @@ iwmOS1 = useAdaptive ? iwmAdaptOS1 : fixedRsiOversold1
 iwmOS2 = useAdaptive ? iwmAdaptOS2 : fixedRsiOversold2
 iwmOB1 = useAdaptive ? iwmAdaptOB1 : fixedRsiOverbought1
 iwmOB2 = useAdaptive ? iwmAdaptOB2 : fixedRsiOverbought2
-
-// 健康度：分布宽度检查（大盘指数优化：≥12）
-health_distribution_spread = (spyOB1 - spyOS1) >= 12
-health_ok = health_sample_coverage and health_stat_valid and health_distribution_spread
 
 //========================
 // Calculate Scores per Market
@@ -816,7 +808,9 @@ spyStrongBot = spyStrongBotRaw and spyBuyQualityOK
 spyBot = (spyBotOnly or (spyBotAssisted and not spyBotOnly)) and spyBuyQualityOK and not spyStrongBot
 spyTop = spyTopOnly and spySellQualityOK
 spyStrongTop = spyStrongTopRaw and spySellQualityOK
-spyElevated = spyElevatedRaw
+// v7.5: 质量过滤同样作用于 ELEVATED（与 CAUTION/REDUCE 一致）
+// v7.5: quality gate now applies to ELEVATED like CAUTION/REDUCE
+spyElevated = spyElevatedRaw and spySellQualityOK
 spyBotRaw = (spyStrongBot or spyBot)
 spyTopRaw = (spyStrongTop or spyTop)
 
@@ -824,7 +818,7 @@ qqqStrongBot = qqqStrongBotRaw and qqqBuyQualityOK
 qqqBot = (qqqBotOnly or (qqqBotAssisted and not qqqBotOnly)) and qqqBuyQualityOK and not qqqStrongBot
 qqqTop = qqqTopOnly and qqqSellQualityOK
 qqqStrongTop = qqqStrongTopRaw and qqqSellQualityOK
-qqqElevated = qqqElevatedRaw
+qqqElevated = qqqElevatedRaw and qqqSellQualityOK
 qqqBotRaw = (qqqStrongBot or qqqBot)
 qqqTopRaw = (qqqStrongTop or qqqTop)
 
@@ -832,7 +826,7 @@ iwmStrongBot = iwmStrongBotRaw and iwmBuyQualityOK
 iwmBot = (iwmBotOnly or (iwmBotAssisted and not iwmBotOnly)) and iwmBuyQualityOK and not iwmStrongBot
 iwmTop = iwmTopOnly and iwmSellQualityOK
 iwmStrongTop = iwmStrongTopRaw and iwmSellQualityOK
-iwmElevated = iwmElevatedRaw
+iwmElevated = iwmElevatedRaw and iwmSellQualityOK
 iwmBotRaw = (iwmStrongBot or iwmBot)
 iwmTopRaw = (iwmStrongTop or iwmTop)
 
@@ -1012,6 +1006,9 @@ showAgg = modePlot == "AGG(共振)"
 displayResonanceBonus = showAgg ? botResonanceBonus : 0.0
 displayScoreBase = showSpy ? spyScore : showQqq ? qqqScore : showIwm ? iwmScore : (spyScore + qqqScore + iwmScore) / 3
 displayScore = displayScoreBase + displayResonanceBonus
+// v7.5: 卖出侧比较使用原始卖出评分（不含回撤加分）
+// v7.5: sell-side comparisons use the raw sell score (no drawdown bonus)
+displaySellScore = showSpy ? spySellScore : showQqq ? qqqSellScore : showIwm ? iwmSellScore : (spySellScore + qqqSellScore + iwmSellScore) / 3
 displayRsiS = showSpy ? spyRsiS : showQqq ? qqqRsiS : showIwm ? iwmRsiS : (spyRsiS + qqqRsiS + iwmRsiS) / 3
 displayFiS = showSpy ? spyFiS : showQqq ? qqqFiS : showIwm ? iwmFiS : (spyFiS + qqqFiS + iwmFiS) / 3
 displayTwS = showSpy ? spyTwS : showQqq ? qqqTwS : showIwm ? iwmTwS : (spyTwS + qqqTwS + iwmTwS) / 3
@@ -1040,7 +1037,6 @@ displayBotOnlySignal = showSpy ? spyBot : showQqq ? qqqBot : showIwm ? iwmBot : 
 displayStrongTopSignal = showSpy ? spyStrongTop : showQqq ? qqqStrongTop : showIwm ? iwmStrongTop : (aggTop and displayScore <= adjStrongTopThreshold)
 displayTopOnlySignal = showSpy ? spyTop : showQqq ? qqqTop : showIwm ? iwmTop : (aggTop and displayScore <= adjTopThreshold and displayScore > adjStrongTopThreshold)
 displayBotSignal = displayStrongBotSignal or displayBotOnlySignal
-displayTopSignal = displayStrongTopSignal or displayTopOnlySignal
 alertBuySideActive = showSpy ? (spyStrongBot or spyBot) : showQqq ? (qqqStrongBot or qqqBot) : showIwm ? (iwmStrongBot or iwmBot) : (aggBottom and displayScore >= adjBotThreshold)
 alertSellSideActive = showSpy ? (spyStrongTop or spyTop or spyElevated) : showQqq ? (qqqStrongTop or qqqTop or qqqElevated) : showIwm ? (iwmStrongTop or iwmTop or iwmElevated) : (aggTop and displayScore <= adjTopThreshold)
 displayStrongBotPlotTrig = showSpy ? spyStrongBotPlotBar : showQqq ? qqqStrongBotPlotBar : showIwm ? iwmStrongBotPlotBar : false
@@ -1050,8 +1046,9 @@ displayTopPlotTrig = showSpy ? spyTopPlotBar : showQqq ? qqqTopPlotBar : showIwm
 displayElevatedPlotTrig = showSpy ? spyElevatedPlotBar : showQqq ? qqqElevatedPlotBar : showIwm ? iwmElevatedPlotBar : false
 displayUsesPlottedSignalState = showSpy or showQqq or showIwm
 
-// HOLD 区间: 评分在买入和卖出阈值之间
-isHoldZone = displayScore < adjBotThreshold and displayScore > adjTopThreshold
+// HOLD 区间: 评分在买入和卖出阈值之间（卖出侧用原始卖出评分）
+// HOLD zone: between buy and sell thresholds (sell side uses the raw sell score)
+isHoldZone = displayScore < adjBotThreshold and displaySellScore > adjTopThreshold
 
 // 使用 var 跟踪当前区间状态 (0=无, 1=买入区间, -1=卖出区间)
 var int signalZoneState = 0
@@ -1134,7 +1131,6 @@ plotshape(showAgg and aggTopEdgeBar, title="Resonance Risk", style=shape.labeldo
 //========================
 // Dashboard
 //========================
-thresholdModeText = useAdaptive ? "Adaptive" : "Fixed"
 
 //========================
 // v7.3 Dark Theme Colors (深色主题配色)
@@ -1172,16 +1168,14 @@ f_getFontSize(_size) =>
 useMobileMode = dashboardMode == "Mobile"
 dashboardPos = f_getPosition(dashboardPosition)
 fontSize = f_getFontSize(dashboardFontSize)
-fontSizeHeader = dashboardFontSize == "Large" ? size.large : dashboardFontSize == "Normal" ? size.normal : size.normal
+// 标题行始终使用 normal 字号（输入仅提供 Small/Normal）
+// Header row always uses normal size (input only offers Small/Normal)
+fontSizeHeader = size.normal
 
 // Prepare signal text (used in both modes)
 totalColor = panelBuyActive ? color.lime : panelElevatedSignal ? color.yellow : panelSellActive ? color.red : color.gray
 signalText = panelStrongBotSignal ? "PANIC LOW" : panelBotOnlySignal ? "BUY ZONE" : panelElevatedSignal ? "ELEVATED" : panelStrongTopSignal ? "REDUCE" : panelTopOnlySignal ? "CAUTION" : "HOLD"
 signalEmoji = panelStrongBotSignal ? "🚀" : panelBotOnlySignal ? "📈" : panelElevatedSignal ? "⭐" : panelStrongTopSignal ? "⚠️" : panelTopOnlySignal ? "⚡" : "⚪"
-
-// Divergence display
-divColor = displayBullishDiv ? color.aqua : displayBearishDiv ? color.fuchsia : color.gray
-thresholdColor = useAdaptive ? color.aqua : color.yellow
 
 //========================
 // v7.3 Filter Status Detection (过滤状态检测)
@@ -1193,10 +1187,12 @@ thresholdColor = useAdaptive ? color.aqua : color.yellow
 
 // 买入侧过滤检测：评分达到买入阈值但信号质量不足
 isBuyZoneFiltered = displayScore >= adjBotThreshold and not (displayBotTrig or displayBotSignal)
-// 卖出侧过滤检测：评分达到卖出阈值但因上升趋势被过滤
-isSellZoneFiltered = displayScore <= adjTopThreshold and displayUptrend and useTrendFilter
-// 熊市过滤检测：处于下降趋势且启用趋势过滤
-isBearMarketFiltered = not displayUptrend and useTrendFilter and displayScore >= adjBotThreshold and displayScore < adjStrongBotThreshold
+// 卖出侧过滤检测：原始卖出评分达到卖出阈值但因上升趋势被过滤（不含回撤加分）
+// Sell-side filter check: raw sell score hits the sell threshold but the uptrend blocks it (no drawdown bonus)
+isSellZoneFiltered = displaySellScore <= adjTopThreshold and displayUptrend and useTrendFilter
+// 熊市过滤检测：处于下降趋势且启用趋势过滤，且当前没有实际绘制/激活的买入信号
+// Bear-market filter check: downtrend with trend filter on, shown only when no buy signal is actually plotted/active
+isBearMarketFiltered = not displayUptrend and useTrendFilter and displayScore >= adjBotThreshold and displayScore < adjStrongBotThreshold and not (displayBotTrig or displayBotSignal)
 
 // 过滤状态文本和颜色
 filterStatus = isBearMarketFiltered ? "🚫" : isBuyZoneFiltered ? "✋ WAIT" : isSellZoneFiltered ? "☕ HOLD" : "👀"
@@ -1269,7 +1265,8 @@ if showDashboard and barstate.islast
         trendText = displayUptrend ? "↑UP" : "↓DN"
         trendColor = displayUptrend ? color.lime : color.red
         divText = displayBullishDiv ? "💎B" : displayBearishDiv ? "💎S" : ""
-        qualityText = displayBuyQuality + str.tostring(displayPosFactor) + "/4"
+        // 日内模式仅 3 个因子（RSI/Vol/ADD） Intraday mode has only 3 factors (RSI/Vol/ADD)
+        qualityText = displayBuyQuality + str.tostring(displayPosFactor) + (intradayMode ? "/3" : "/4")
         row4 = trendText + " " + divText + " " + qualityText
         table.cell(dashboard, 0, 4, row4, bgcolor=c_bg_row, text_color=trendColor, text_size=fontSize, text_halign=text.align_left)
 
@@ -1293,7 +1290,7 @@ enable_smart_alert = input.bool(true, "Enable Smart Alert 启用智能警报", g
     tooltip="V2智能警报：信号等级+最新K线首次可见即提醒+单根K线去重+跨K线严格升级+跨K线防重发\nV2 Smart Alert: signal levels + alert on the latest bar's first visible signal + one alert per bar + cross-bar strict upgrades + cross-bar repeat suppression")
 min_alert_level_str = input.string("📈 Lv1 Buy Zone", "Min Alert Level 最小警报等级",
     options=["📈 Lv1 Buy Zone", "💎 Lv2 Divergence", "🔥 Lv3 Resonance", "🚀 Lv4 Panic", "🚀🔥 Lv5 Combo"],
-    group=grpAlert, tooltip="Lv1=买入/卖出区间(常见) | Lv2=背离(中等)\nLv3=共振(较少) | Lv4=恐慌/减仓(很少) | Lv5=组合(极少)\n═══════════════════════\nLv1=Buy/Sell zone(common) | Lv2=Divergence(medium)\nLv3=Resonance(rare) | Lv4=Panic/Reduce(very rare) | Lv5=Combo(extreme)")
+    group=grpAlert, tooltip="Lv1=买入/卖出区间(常见) | Lv2=背离(中等)\nLv3=共振(较少) | Lv4=恐慌/减仓(很少) | Lv5=组合(极少)\n═══════════════════════\nLv1=Buy/Sell zone(common) | Lv2=Divergence(medium)\nLv3=Resonance(rare) | Lv4=Panic/Reduce(very rare) | Lv5=Combo(extreme)\nAGG path only publishes Lv3 resonance alerts / AGG 路径仅产生 Lv3 共振提醒")
 min_alert_level = min_alert_level_str == "📈 Lv1 Buy Zone" ? 1 : min_alert_level_str == "💎 Lv2 Divergence" ? 2 : min_alert_level_str == "🔥 Lv3 Resonance" ? 3 : min_alert_level_str == "🚀 Lv4 Panic" ? 4 : 5
 
 // 智能提醒直接复用图上绘制所用的 trigger / edge，避免提醒与图形口径漂移
@@ -1305,8 +1302,12 @@ autoStrongTopTrig = displayStrongTopPlotTrig
 autoBullishDivTrig = showSpy ? spyBullishDivPlotBar : showQqq ? qqqBullishDivPlotBar : showIwm ? iwmBullishDivPlotBar : false
 autoBearishDivTrig = showSpy ? spyBearishDivPlotBar : showQqq ? qqqBearishDivPlotBar : showIwm ? iwmBearishDivPlotBar : false
 autoElevatedTrig = displayElevatedPlotTrig
-autoBotResonanceTrig = showAgg and aggBottomEdgeBar
-autoTopResonanceTrig = showAgg and aggTopEdgeBar
+// 共振在任意显示路径上作为升级标签：同一K线已有可见主买入/风险触发时才升级（Lv3/Lv5）
+// 纯共振事件仍仅在 AGG 路径发布，因为 f_buy_level / f_sell_level 在无主触发时返回 0
+// Resonance acts as an UPGRADE TAG on any display path when a visible base buy/risk trigger exists on the same bar;
+// resonance-only events still publish only on the AGG path because f_buy_level / f_sell_level return 0 without a base trigger
+autoBotResonanceTrig = aggBottomEdgeBar
+autoTopResonanceTrig = aggTopEdgeBar
 alertTickerLabel = showSpy ? "SPY" : showQqq ? "QQQ" : showIwm ? "IWM" : showAgg ? "AGG" : syminfo.ticker
 
 // 信号等级函数 (优先级越高值越大)
@@ -1338,6 +1339,7 @@ varip bool buy_alert_armed = true
 varip bool sell_alert_armed = true
 varip int buy_alert_latched_level = 0
 varip int sell_alert_latched_level = 0
+varip int live_alert_session_day = na
 varip bool smart_alert_fired_this_bar = false
 varip int observed_display_path = 0
 varip int observed_buy_level = 0
@@ -1372,8 +1374,10 @@ buy_signal_active = current_buy_level > 0
 sell_signal_active = current_sell_level > 0
 regular_session_alerts = not intradayMode or session.ismarket
 live_intraday_latch_mode = intradayMode and useLiveData
-prev_regular_session = bar_index > 0 ? session.ismarket[1] : false
-new_live_intraday_session = live_intraday_latch_mode and session.ismarket and not prev_regular_session
+// 每个新交易日的第一根常规时段K线重新解锁同侧提醒；RTH-only 图表 session.ismarket 恒为 true，无法依赖 false→true 切换
+// Re-arm on the first regular-session bar of each new trading day; works on RTH-only charts where session.ismarket never goes false
+int session_date_key = year(time) * 10000 + month(time) * 100 + dayofmonth(time)
+new_live_intraday_session = live_intraday_latch_mode and session.ismarket and (na(live_alert_session_day) or session_date_key != live_alert_session_day)
 prev_buy_side_active = bar_index > 0 ? alertBuySideActive[1] : false
 prev_sell_side_active = bar_index > 0 ? alertSellSideActive[1] : false
 
@@ -1382,6 +1386,7 @@ if not live_intraday_latch_mode
     sell_alert_armed := true
     buy_alert_latched_level := 0
     sell_alert_latched_level := 0
+    live_alert_session_day := na
     if barstate.isnew and not prev_buy_side_active
         buy_alert_level_published := 0
     if barstate.isnew and not prev_sell_side_active
@@ -1391,6 +1396,7 @@ else if new_live_intraday_session
     sell_alert_armed := true
     buy_alert_latched_level := 0
     sell_alert_latched_level := 0
+    live_alert_session_day := session_date_key
 
 // 日内智能警报仅在常规交易时段触发，避免盘后 1 分钟图用冻结广度反复提醒
 // Intraday smart alerts only fire during regular market hours to avoid repeated after-hours alerts on frozen breadth data

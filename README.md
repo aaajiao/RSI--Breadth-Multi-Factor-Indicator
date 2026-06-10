@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v7.4
+# RSI+ Breadth Multi-Factor Indicator v7.5
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -36,7 +36,7 @@ The current `RSI+` script implements these modules:
 - **Volume breadth**:
   - NYSE: `UVOL`, `DVOL`
   - NASDAQ: `UVOLQ`, `DVOLQ`
-- **Intraday breadth proxy**: `ADD`
+- **Intraday breadth proxy**: `ADD`; during the regular session, missing ADD values fall back to the previous valid value (na-guard) so the score does not transiently drop, and the last regular-session value is frozen after the close
 - **Confirmed daily helper**: `f_secDaily()` now returns the previous fully confirmed daily value
 - **Intraday live alert mode**: `f_secDailyLive()` can use developing daily values during regular market hours, then freezes breadth/volume snapshots after the close
 - **Intraday session handling**: SPY / QQQ / IWM / ADD intraday requests inherit the chart session modifier so extended-hours charts only react to real post-market bars
@@ -62,6 +62,7 @@ Default threshold math:
 - `Buy strong offset = +25%` -> `PANIC LOW >= 6`
 - `Sell Sensitivity = 45%` -> `CAUTION <= -4`
 - `Sell strong offset = +25%` -> `REDUCE <= -6`
+- Sensitivity direction: a lower `Buy/Sell Sensitivity` % means a lower threshold and more sensitive signals; a higher % is stricter (the input tooltips were corrected to this direction in v7.5; the formulas themselves are unchanged)
 
 Mode adjustments:
 
@@ -89,6 +90,7 @@ The script currently uses the following signal names and emojis:
 Important behavior:
 
 - `ELEVATED` is not just a weaker sell signal. It is the actual display state when sell thresholds are hit but the trend filter keeps the script from issuing `CAUTION` or `REDUCE`.
+- `ELEVATED` respects the Signal Quality Filter the same way `CAUTION` and `REDUCE` do: C-grade conditions do not display or alert as `ELEVATED`.
 - Divergence is a separate overlay signal and can also assist borderline buy signals when `Divergence Assist` is enabled.
 - Resonance is based on multi-market agreement, not a single-market score.
 
@@ -102,7 +104,7 @@ Important behavior:
 - `B`: 2 aligned factors
 - `C`: fewer than 2 aligned factors
 
-When `Signal Quality Filter` is enabled, only `A` and `B` signals can trigger buys or sells.
+When `Signal Quality Filter` is enabled, only `A` and `B` signals can trigger buys or sells. The gate also applies to `ELEVATED`, so C-grade conditions cannot display or alert as `ELEVATED` either.
 
 #### Drawdown Bonus
 
@@ -142,7 +144,7 @@ Actual layout in code: **7 rows x 1 column**
 | 1 | Centered score bar |
 | 2 | RSI score + volume score |
 | 3 | `FI + TW` in daily mode, or `ADD + TW` in intraday mode; current code keeps the compact `TW` slot even though intraday breadth scoring is driven by `ADD` |
-| 4 | Trend + divergence + quality, e.g. `↑UP 💎B A3/4` |
+| 4 | Trend + divergence + quality, e.g. `↑UP 💎B A3/4`; the quality cell shows `/3` in intraday mode (3 factors: RSI/Vol/ADD) and `/4` in daily mode |
 | 5 | Drawdown + filter status, e.g. `DD8%+2 ✋ WAIT` |
 | 6 | `SPY/QQQ/IWM` status plus resonance icon |
 
@@ -161,8 +163,13 @@ Actual layout in code: **2 rows x 1 column**
 |---|---|---|
 | `👀` | No active filter block | Watching |
 | `✋ WAIT` | Score reaches buy zone but signal is filtered | Buy score is there, confirmation is not |
-| `☕ HOLD` | Sell threshold reached, but uptrend blocks sell signal | Trend says hold risk cautiously |
-| `🚫` | Buy-zone score in downtrend with trend filter active | Bear-market style risk filter |
+| `☕ HOLD` | Raw sell score (no drawdown bonus) reaches sell threshold, but uptrend blocks sell signal | Trend says hold risk cautiously |
+| `🚫` | Buy-zone score in downtrend with trend filter active and no buy signal plotted | Bear-market style risk filter |
+
+Two consistency details:
+
+- `☕ HOLD` plus the hold-zone / zone-exit detection (signal-zone background) all compare the raw sell score (no drawdown bonus) against the sell threshold, so a large drawdown bonus pushing up the displayed score cannot misalign the filter status with the actual sell-threshold logic.
+- `🚫` only shows when no buy signal is plotted or active, so it never contradicts an on-chart `BUY ZONE` marker.
 
 #### How To Read `filterStatus` And `signalText`
 
@@ -196,6 +203,7 @@ Alert behavior:
 - Smart alerts reuse the same `Trig / Edge` signals that drive plotted chart markers, instead of firing directly from raw live state
 - Smart alerts follow the currently displayed plotted K-line signal path, so manual `Display Mode` changes stay visually aligned with alerts
 - `Lv2 (DIVERGENCE)` and `Lv3 (RESONANCE)` are upgrade tags on a visible base buy/risk trigger; divergence-only or resonance-only states do not publish hidden standalone alerts
+- Resonance upgrades apply on every display path: on `SPY / QQQ / IWM`, a visible base buy/risk trigger that coincides with the resonance edge on the same bar publishes `Lv3` (base + resonance) or `Lv5` (strong + resonance, e.g. `PANIC LOW + RESONANCE`)
 - Smart alerts publish when the latest realtime bar first shows a visible trigger level on that tick; later historical backfill does not cancel or replay that reminder
 - On realtime bars, plotted signals are bar-latched: once a buy/risk marker fires intrabar, that bar keeps the marker and aligned panel state after the close
 - Same-level or downgraded alerts do not re-fire inside the same bar even if the live condition flickers off and back on
@@ -204,14 +212,24 @@ Alert behavior:
 - `varip` state remembers the latest bar's observed visible level, so same-bar flicker or later historical backfill does not erase the first reminder
 - Published alert levels also use rollback-safe `varip` state, so realtime bars do not re-fire the same level on each tick
 - In manual `SPY / QQQ / IWM` display modes, AGG resonance does not publish a separate hidden-symbol alert path; resonance-only alerts remain on the `AGG(共振)` path
+- The `AGG(共振)` path publishes `Lv3` only, since it has no strong-signal or divergence states of its own
 - On `intraday + Live Alert Data`, same-side alerts are latched for the regular session, so Lv1 does not re-fire repeatedly during the day
-- Live intraday resets those side latches only at the next regular-session open; same-level repeats and downgrades stay muted during the current session
+- Live intraday re-arms those side latches on the first regular-session bar of each new trading day (date-key detection), which also works on RTH-only charts that have no extended-hours session transition; same-level repeats and downgrades stay muted during the current session
+- After-hours bars never publish alerts and never re-arm the latches; extended-hours behavior is unchanged
 - Live intraday still allows strict level upgrades only across later bars (`Lv1 -> Lv3/4/5`)
 - Cross-bar alert state suppresses repeated alerts while the same side stays active at the same or lower level
 - Buy and risk alerts are tracked separately
 - `ELEVATED` alerts fire on entry or later level upgrades, not on every new bar
 - Intraday charts can use live daily data if `Live Alert Data` is enabled
 - On intraday charts, smart alerts are limited to regular market hours; after the close the script still freezes breadth snapshots, but it does not publish after-hours alerts
+
+### Known Limitations
+
+These limitations are inherent to the current design and worth knowing before trusting historical markers:
+
+- **Historical intraday markers are not a backtest.** On intraday charts, historical bars use end-of-day daily breadth values (`f_secDailyLive()` requests with lookahead), so historical intraday markers can look better than what realtime would have shown. Realtime alerts use developing values instead.
+- **Daily charts lag breadth by one day.** On daily charts, breadth and volume factors come from the previous confirmed day via `f_secDaily()`. The `Live Alert Data` option only affects intraday charts.
+- **Futures support is best-effort.** Futures tickers (`ES` / `NQ` / `RTY` etc.) are detected best-effort by ticker matching. Session gating and breadth freezing are designed for US equity regular hours and are not validated for futures sessions.
 
 ### Recommended Defaults
 
@@ -249,6 +267,7 @@ Pine Script has no local build system in this repo. Validation is manual:
 4. Check both `Full` and `Mobile` dashboard modes
 5. Check buy, risk, divergence, and resonance labels against the script logic above
 6. On extended-hours intraday charts, confirm there are no after-hours smart alerts after the regular close
+7. On RTH-only intraday charts with `Live Alert Data`, confirm same-side alert latches re-arm on the first regular-session bar of a new trading day
 
 ---
 
@@ -256,4 +275,4 @@ Pine Script has no local build system in this repo. Validation is manual:
 
 This indicator is for educational purposes only. Past performance does not guarantee future results.
 
-**Version**: 7.4 | **Pine Script**: v6 | **Updated**: 2026-03-19
+**Version**: 7.5 | **Pine Script**: v6 | **Updated**: 2026-06-10
