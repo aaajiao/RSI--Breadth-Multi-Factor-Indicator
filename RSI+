@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v7.5", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.6", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -47,14 +47,14 @@ mode = input.string("Standard", "Signal Mode 信号模式", options=["Aggressive
 grpAdaptive = "Adaptive / 自适应"
 
 // Lookback 模式选择
-lookbackMode = input.string("Auto", "Lookback Mode 回溯模式", options=["Auto", "Fixed 252", "Custom"], group=grpAdaptive, tooltip="Auto: 自动计算 Auto calculate\nFixed 252: 固定1年 Fixed 1 year\nCustom: 自定义 Custom value")
+lookbackMode = input.string("Auto", "Lookback Mode 回溯模式", options=["Auto", "Fixed 252", "Custom"], group=grpAdaptive, tooltip="Auto: 每市场独立计算 Per-market auto calculation\nFixed 252: 固定252根图表K线 Fixed 252 chart bars\nCustom: 自定义K线数 Custom chart bars\n有效样本不足时先使用已有样本，少于10个样本时使用固定RSI阈值\nUse available samples while warming up; fixed RSI bands below 10 samples")
 lookbackCustom = input.int(252, "Custom Lookback 自定义回溯", minval=100, maxval=1000, group=grpAdaptive)
 
 // 精度控制（大盘指数优化为 High 默认）
 lookbackPrecision = input.string("High", "Precision 精度", options=["High", "Normal", "Low"], group=grpAdaptive, tooltip="High: 更精确 More precise\nNormal: 平衡 Balanced\nLow: 更快 Faster")
 
 // 长期波动历史深度
-volHistoryMode = input.string("1 Year", "Vol History 波动历史", options=["6 Months", "1 Year", "2 Years"], group=grpAdaptive, tooltip="波动率历史周期 Volatility history period")
+volHistoryMode = input.string("1 Year", "Vol History 波动历史", options=["6 Months", "1 Year", "2 Years"], group=grpAdaptive, tooltip="每市场使用126/252/504个已确认日线RSI样本\nEach market uses 126/252/504 confirmed daily RSI samples\n用于Auto回溯的长期波动基准；样本不足时使用当前周期短期波动\nLong-term baseline for Auto lookback; use chart-timeframe short-term volatility while warming up")
 
 // Threshold Mode
 thresholdMode = input.string("Auto", "Threshold Mode 阈值模式", options=["Auto", "Fixed", "Adaptive"], group=grpAdaptive, tooltip="Auto: 自动选择 Auto select\nFixed: 固定阈值 Fixed values\nAdaptive: 动态阈值 Dynamic percentile")
@@ -66,11 +66,14 @@ rsiVolThreshold = input.float(8.0, "RSI Vol Threshold RSI波动阈值", minval=5
 // Core Inputs
 //========================
 grp1 = "Core Settings 核心设置"
-rsiLen = input.int(14, "RSI Length RSI周期", minval=2, group=grp1)
+rsiLen = input.int(14, "RSI Length RSI周期", minval=2, maxval=250, group=grp1, tooltip="2–250；最长派生窗口为1000根K线\n2–250; derived windows use at most 1000 bars")
 
 // 自动获取图表周期
 tfData = timeframe.period
 intradayMode = timeframe.isintraday
+supportedTimeframe = timeframe.isseconds or timeframe.isminutes or (timeframe.isdaily and timeframe.multiplier == 1)
+if barstate.isfirst and not supportedTimeframe
+    runtime.error("Use a time-based intraday or 1-day chart. Tick, multi-day, weekly and monthly charts are not supported. / 请使用基于时间的日内或1日图；暂不支持tick、多日、周线和月线周期。")
 useLiveData = input.bool(true, "Live Alert Data 实时警报数据", group=grp1,
     tooltip="日内图在常规时段使用实时日线数据，盘后冻结广度快照（推荐）\nIntraday: use developing daily data during market hours, freeze breadth snapshots after the close\n关闭=仅使用已确认日线 Off=confirmed data only")
 
@@ -82,6 +85,9 @@ fixedRsiOversold1 = input.int(30, "Oversold Lv1 超卖1", minval=10, maxval=40, 
 fixedRsiOversold2 = input.int(40, "Oversold Lv2 超卖2", minval=20, maxval=50, group=grpFixedThresh)
 fixedRsiOverbought1 = input.int(75, "Overbought Lv1 超买1", minval=60, maxval=90, group=grpFixedThresh)
 fixedRsiOverbought2 = input.int(65, "Overbought Lv2 超买2", minval=50, maxval=80, group=grpFixedThresh)
+
+if barstate.isfirst and not (fixedRsiOversold1 < fixedRsiOversold2 and fixedRsiOversold2 < fixedRsiOverbought2 and fixedRsiOverbought2 < fixedRsiOverbought1)
+    runtime.error("Fixed RSI bands must satisfy Oversold Lv1 < Oversold Lv2 < Overbought Lv2 < Overbought Lv1. / 固定RSI阈值必须满足：超卖1 < 超卖2 < 超买2 < 超买1。")
 
 grp2 = "Signal Thresholds 信号阈值 (%)"
 
@@ -196,10 +202,12 @@ showSignalZone = input.bool(true, "Show Signal Zone 显示信号区间", group=g
 //========================
 modeAdjust = mode == "Aggressive" ? 1 : mode == "Conservative" ? -1 : 0
 intradayAdjust = intradayMode ? 2 : 0
-adjBotThreshold = botThreshold - modeAdjust - intradayAdjust
-adjStrongBotThreshold = strongBotThreshold - modeAdjust - intradayAdjust
-adjTopThreshold = topThreshold + modeAdjust + intradayAdjust
-adjStrongTopThreshold = strongTopThreshold + modeAdjust + intradayAdjust
+// 阈值保留中性区间，强弱档至少相差1分。
+// Preserve a neutral zone and at least one point between weak and strong thresholds.
+adjBotThreshold = math.max(1, botThreshold - modeAdjust - intradayAdjust)
+adjStrongBotThreshold = math.max(adjBotThreshold + 1, strongBotThreshold - modeAdjust - intradayAdjust)
+adjTopThreshold = math.min(-1, topThreshold + modeAdjust + intradayAdjust)
+adjStrongTopThreshold = math.min(adjTopThreshold - 1, strongTopThreshold + modeAdjust + intradayAdjust)
 cooldownBarsBase = mode == "Aggressive" ? 5 : mode == "Conservative" ? 15 : cooldownIn
 
 //========================
@@ -245,8 +253,11 @@ f_centeredBar(_value, _absMax, _halfLength) =>
     leftPart + "│" + rightPart
 
 // v7.2: Market Status Indicator (市场状态指示器)
-f_marketStatus(_score, _botTh, _topTh) =>
-    _score >= _botTh ? "🟢" : _score <= _topTh ? "🔴" : "🟡"
+f_marketStatus(_buyScore, _sellScore, _botTh, _topTh, _ready) =>
+    not _ready ? "⚪" : _sellScore <= _topTh ? "🔴" : _buyScore >= _botTh ? "🟢" : "🟡"
+
+f_qualityGrade(_count) =>
+    _count >= 3 ? "A" : _count >= 2 ? "B" : "C"
 
 // 日内请求继承图表 session，避免 regular 数据被盘后 K 线错误延展
 // Intraday requests inherit the chart session to avoid synthetic post-market carry-forward
@@ -256,22 +267,31 @@ f_intradayTicker(_sym) =>
 f_sec(_sym, _expr) =>
     reqSym = f_intradayTicker(_sym)
     reqGaps = intradayMode ? barmerge.gaps_on : barmerge.gaps_off
-    request.security(reqSym, tfData, _expr, reqGaps, barmerge.lookahead_off)
+    request.security(reqSym, tfData, _expr, reqGaps, barmerge.lookahead_off, ignore_invalid_symbol=true)
 
 f_ohlc(_sym) =>
     reqSym = f_intradayTicker(_sym)
     reqGaps = intradayMode ? barmerge.gaps_on : barmerge.gaps_off
-    request.security(reqSym, tfData, [open, high, low, close], reqGaps, barmerge.lookahead_off)
+    request.security(reqSym, tfData, [open, high, low, close], reqGaps, barmerge.lookahead_off, ignore_invalid_symbol=true)
 
 // 已确认日线：返回上一根确认完成的日线值，避免实时 HTF 漂移
 // Confirmed daily: use the last fully confirmed daily bar
 f_secDaily(_sym, _expr) =>
-    request.security(_sym, "D", _expr[1], barmerge.gaps_off, barmerge.lookahead_on)
+    request.security(_sym, "D", _expr[1], barmerge.gaps_off, barmerge.lookahead_on, ignore_invalid_symbol=true)
 
-// 日内图获取当日developing数据 (lookahead_on使盘中可用，日线图不需要)
-// Intraday: get developing daily data (lookahead_on for timely alerts)
+// 同源一次请求返回[上一确认日线，当日developing]；只有第二项允许日内历史回填。
+// One request returns [previous confirmed daily, developing daily]; only the second item permits intraday historical backfill.
 f_secDailyLive(_sym, _expr) =>
-    request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_on)
+    request.security(_sym, "D", [_expr[1], _expr], barmerge.gaps_off, barmerge.lookahead_on, ignore_invalid_symbol=true)
+
+// 高点、长期波动与样本数均取上一确认日线，不引入未确认日线信息。
+// High, long-term volatility and sample count all use the previous confirmed daily bar.
+f_dailyMarketStats(_sym, _historyDays) =>
+    dailyRsi = ta.rsi(close, rsiLen)
+    dailyHigh = ta.highest(close, 252)
+    dailyLongVol = ta.stdev(dailyRsi, _historyDays)
+    dailySamples = int(math.min(_historyDays, ta.cum(not na(dailyRsi) ? 1.0 : 0.0)))
+    request.security(_sym, "D", [dailyHigh[1], dailyLongVol[1], dailySamples[1]], barmerge.gaps_off, barmerge.lookahead_on, ignore_invalid_symbol=true)
 
 f_rsi_from_close(_c) =>
     ta.rsi(_c, rsiLen)
@@ -294,7 +314,7 @@ f_dynamicCooldown(_baseCooldown, _volFast, _volThreshold) =>
     if _baseCooldown == 0
         0  // 保留用户 "无限制" 设定 Preserve user's "no limit" setting
     else
-        volRatio = _volFast / _volThreshold
+        volRatio = nz(_volFast, _volThreshold) / math.max(_volThreshold, 0.0001)
         // 高波动 (>1.2x): 60% 冷却 | 正常: 100% | 低波动 (<0.8x): 150% 冷却
         adjustedCooldown = volRatio > 1.2 ? int(_baseCooldown * 0.6) : volRatio < 0.8 ? int(_baseCooldown * 1.5) : _baseCooldown
         math.max(3, adjustedCooldown)  // 最小3根K线
@@ -363,13 +383,14 @@ f_divergenceAssisted(_score, _threshold, _hasDivergence, _assistEnabled) =>
 f_resonanceStrength(_spyTrig, _qqqTrig, _iwmTrig, _spyRecent, _qqqRecent, _iwmRecent) =>
     // 同步共振: 同一根K线触发 (最高质量)
     syncCount = (_spyTrig ? 1 : 0) + (_qqqTrig ? 1 : 0) + (_iwmTrig ? 1 : 0)
-    syncResonance = syncCount >= 2
+    syncResonance = syncCount >= 2 and syncCount >= minAgree
 
     // 窗口共振: 窗口期内触发
     windowCount = (_spyRecent ? 1 : 0) + (_qqqRecent ? 1 : 0) + (_iwmRecent ? 1 : 0)
 
-    // 共振强度: 3=完美共振(3市场同步), 2.5=双同步, 2=窗口共振, 1=单市场
-    strength = syncCount >= 3 ? 3.0 : syncResonance ? 2.5 : windowCount >= 2 ? 2.0 : windowCount >= 1 ? 1.0 : 0.0
+    // 共振强度与最小市场数一致；单市场或未达标窗口没有共振加分。
+    // Respect Min Markets; a single market or an incomplete window receives no resonance bonus.
+    strength = syncCount >= 3 ? 3.0 : syncResonance ? 2.5 : windowCount >= 2 and windowCount >= minAgree ? 2.0 : windowCount >= 1 ? 1.0 : 0.0
 
     // 共振加分
     bonus = strength >= 2.5 ? 1.0 : strength >= 2 ? 0.5 : 0.0
@@ -380,16 +401,58 @@ f_resonanceStrength(_spyTrig, _qqqTrig, _iwmTrig, _spyRecent, _qqqRecent, _iwmRe
 // Adaptive Threshold Calculation (自适应阈值计算)
 //========================
 f_adaptiveThresholds(_rsi, _lookback) =>
-    // 安全检查：确保 lookback 不超过可用的历史数据
-    // Pine Script 的 percentile 函数需要至少 lookback+1 根 bar
-    // 同时确保最小值为 10，保证百分位计算有意义
-    safe_lookback = math.max(10, math.min(_lookback, bar_index - 1))
+    // 长度始终为有效正整数；是否有足够样本由调用方单独判断。
+    // Always pass a defined positive length; the caller checks sample readiness separately.
+    safe_lookback = math.max(1, math.min(nz(_lookback, 10), bar_index + 1))
     
     oversold1 = ta.percentile_linear_interpolation(_rsi, safe_lookback, 10)
     oversold2 = ta.percentile_linear_interpolation(_rsi, safe_lookback, 20)
     overbought1 = ta.percentile_linear_interpolation(_rsi, safe_lookback, 90)
     overbought2 = ta.percentile_linear_interpolation(_rsi, safe_lookback, 80)
     [oversold1, oversold2, overbought1, overbought2]
+
+// 回溯按当前图表K线计数；预热时使用已有RSI样本，长度不会为na或0。
+// Lookback counts chart bars; use available RSI samples during warmup and never return na or zero.
+f_adaptiveLookback(_volFinal, _availableBars) =>
+    statError = lookbackPrecision == "High" ? 2.0 : lookbackPrecision == "Normal" ? 2.5 : 3.5
+    statRequired = math.pow(1.96 * nz(_volFinal, rsiVolThreshold) / statError, 2)
+    autoLookback = int(math.max(100, math.min(1000, statRequired)))
+    requestedLookback = lookbackMode == "Custom" ? lookbackCustom : lookbackMode == "Fixed 252" ? 252 : autoLookback
+    math.max(1, math.min(requestedLookback, math.max(1, nz(_availableBars, 1))))
+
+// 每市场独立计算短期波动、RSI阈值、回溯与冷却，宿主图标的不再改变其他市场。
+// Each market owns its volatility, RSI bands, lookback and cooldown, independent of the host chart symbol.
+f_marketAdaptive(_rsi, _longVol) =>
+    shortVol = ta.stdev(_rsi, rsiLen * 4)
+    fastVol = ta.stdev(_rsi, int(rsiLen * 1.5))
+    slowVol = ta.stdev(_rsi, rsiLen * 3)
+    longVolReady = not na(_longVol)
+    shortBaseline = nz(shortVol, nz(fastVol, rsiVolThreshold))
+    longBaseline = nz(_longVol, shortBaseline)
+    recentHigh = shortBaseline > longBaseline * 1.2
+    blendedVol = recentHigh ? shortBaseline * 0.6 + longBaseline * 0.4 : longBaseline * 0.7 + shortBaseline * 0.3
+    finalVol = math.max(blendedVol, longBaseline * 0.8)
+    availableRsiBars = int(ta.cum(not na(_rsi) ? 1.0 : 0.0))
+    lookback = f_adaptiveLookback(finalVol, math.min(availableRsiBars, bar_index + 1))
+    [adaptOS1, adaptOS2, adaptOB1, adaptOB2] = f_adaptiveThresholds(_rsi, lookback)
+    adaptiveReady = availableRsiBars >= 10 and not na(adaptOS1) and not na(adaptOS2) and not na(adaptOB1) and not na(adaptOB2) and adaptOS1 < adaptOS2 and adaptOS2 < adaptOB2 and adaptOB2 < adaptOB1
+    adaptiveRequested = thresholdMode == "Adaptive" or (thresholdMode == "Auto" and (fastVol > rsiVolThreshold or slowVol > rsiVolThreshold * 1.2))
+    useAdaptiveNow = adaptiveRequested and adaptiveReady
+    os1 = useAdaptiveNow ? adaptOS1 : fixedRsiOversold1
+    os2 = useAdaptiveNow ? adaptOS2 : fixedRsiOversold2
+    ob1 = useAdaptiveNow ? adaptOB1 : fixedRsiOverbought1
+    ob2 = useAdaptiveNow ? adaptOB2 : fixedRsiOverbought2
+    marketCooldown = useDynamicCooldown ? f_dynamicCooldown(cooldownBarsBase, fastVol, rsiVolThreshold) : cooldownBarsBase
+    marketDivCooldown = useDynamicCooldown ? f_dynamicCooldown(divCooldownBars, fastVol, rsiVolThreshold) : divCooldownBars
+    [os1, os2, ob1, ob2, lookback, adaptiveReady, longVolReady, useAdaptiveNow, marketCooldown, marketDivCooldown, adaptiveRequested]
+
+// 缺失数据不等于中性：实际参与评分的全部因子与价格/趋势必须可用。
+// Missing data is not neutral: require every scored factor and the price/trend inputs.
+f_marketDataReady(_close, _rsi, _trendMA, _high252, _tw, _fi, _uvol, _dvol, _add, _intraday) =>
+    priceReady = not na(_close) and _close > 0 and not na(_rsi) and not na(_trendMA) and not na(_high252) and _high252 > 0
+    volumeReady = not na(_uvol) and _uvol >= 0 and not na(_dvol) and _dvol > 0
+    breadthReady = _intraday ? not na(_add) : (not na(_tw) and not na(_fi))
+    priceReady and volumeReady and breadthReady
 
 //========================
 // Scoring Functions (评分函数)
@@ -530,42 +593,26 @@ qqqRSI = f_rsi_from_close(qqqC)
 iwmRSI = f_rsi_from_close(iwmC)
 
 //========================
-// Ticker Detection (提前检测以支持自适应驱动)
-// Early detection to support adaptive driver selection
+// Ticker Detection (仅用于AUTO显示选择)
+// Ticker detection is used only for AUTO display selection.
 //========================
 tickerName = str.upper(syminfo.ticker)
 isSpy = str.contains(tickerName, "SPY") or str.contains(tickerName, "SPX") or tickerName == "ES" or tickerName == "MES" or str.contains(tickerName, "ES1!")
 isQqq = str.contains(tickerName, "QQQ") or str.contains(tickerName, "NDX") or tickerName == "NQ" or tickerName == "MNQ" or str.contains(tickerName, "NQ1!")
 isIwm = str.contains(tickerName, "IWM") or str.contains(tickerName, "RUT") or str.contains(tickerName, "RTY") or tickerName == "M2K"
 
-// 自适应系统驱动 RSI：基于当前图表市场
-// Adaptive system driver RSI: based on current chart market
-driverRSI = isSpy ? spyRSI : isQqq ? qqqRSI : isIwm ? iwmRSI : spyRSI
-
-s5tw = f_secDaily(s5twSym, close)
-s5fi = f_secDaily(s5fiSym, close)
-nctw = f_secDaily(nctwSym, close)
-ncfi = f_secDaily(ncfiSym, close)
-r2tw = f_secDaily(r2twSym, close)
-r2fi = f_secDaily(r2fiSym, close)
-
-uvol = f_secDaily(uvolSym, close)
-dvol = f_secDaily(dvolSym, close)
-uvolq = f_secDaily(uvolqSym, close)
-dvolq = f_secDaily(dvolqSym, close)
-
 // 日内图实时日线数据：常规时段内用 developing，盘后冻结为最后一个常规时段快照
 // Intraday live daily data: update during market hours, freeze after the regular close
-s5tw_live_raw = f_secDailyLive(s5twSym, close)
-s5fi_live_raw = f_secDailyLive(s5fiSym, close)
-nctw_live_raw = f_secDailyLive(nctwSym, close)
-ncfi_live_raw = f_secDailyLive(ncfiSym, close)
-r2tw_live_raw = f_secDailyLive(r2twSym, close)
-r2fi_live_raw = f_secDailyLive(r2fiSym, close)
-uvol_live_raw = f_secDailyLive(uvolSym, close)
-dvol_live_raw = f_secDailyLive(dvolSym, close)
-uvolq_live_raw = f_secDailyLive(uvolqSym, close)
-dvolq_live_raw = f_secDailyLive(dvolqSym, close)
+[s5tw, s5tw_live_raw] = f_secDailyLive(s5twSym, close)
+[s5fi, s5fi_live_raw] = f_secDailyLive(s5fiSym, close)
+[nctw, nctw_live_raw] = f_secDailyLive(nctwSym, close)
+[ncfi, ncfi_live_raw] = f_secDailyLive(ncfiSym, close)
+[r2tw, r2tw_live_raw] = f_secDailyLive(r2twSym, close)
+[r2fi, r2fi_live_raw] = f_secDailyLive(r2fiSym, close)
+[uvol, uvol_live_raw] = f_secDailyLive(uvolSym, close)
+[dvol, dvol_live_raw] = f_secDailyLive(dvolSym, close)
+[uvolq, uvolq_live_raw] = f_secDailyLive(uvolqSym, close)
+[dvolq, dvolq_live_raw] = f_secDailyLive(dvolqSym, close)
 
 float s5tw_live = s5tw
 float s5fi_live = s5fi
@@ -598,88 +645,34 @@ if intradayMode
     addValue := session.ismarket ? nz(addValueRaw, addValue[1]) : nz(addValue[1], addValueRaw)
 
 //========================
-// Dual Volatility System & Auto-Adaptive Lookback (双重波动率系统)
+// Per-Market Adaptive System (每市场独立自适应)
 //========================
 
-// Step 1: 短期波动（自适应到 RSI 长度，使用当前图表市场）
-// Short-term volatility using current chart market's RSI
-vol_short_period = rsiLen * 4
-vol_short = ta.stdev(driverRSI, vol_short_period)
-
-// Step 2: 长期波动（根据用户选择的历史深度）
+// 日线长期波动使用完整的126/252/504个已确认日线RSI样本。
+// Long-term volatility uses 126/252/504 confirmed daily RSI samples, independent of chart timeframe.
 vol_history_days = volHistoryMode == "6 Months" ? 126 : volHistoryMode == "1 Year" ? 252 : 504
+[spyHigh252, spyLongVol, spyLongVolSamplesRaw] = f_dailyMarketStats(spySym, vol_history_days)
+[qqqHigh252, qqqLongVol, qqqLongVolSamplesRaw] = f_dailyMarketStats(qqqSym, vol_history_days)
+[iwmHigh252, iwmLongVol, iwmLongVolSamplesRaw] = f_dailyMarketStats(iwmSym, vol_history_days)
+spyLongVolSamples = nz(spyLongVolSamplesRaw, 0)
+qqqLongVolSamples = nz(qqqLongVolSamplesRaw, 0)
+iwmLongVolSamples = nz(iwmLongVolSamplesRaw, 0)
 
-// 根据时间框架调整（确保覆盖相同天数）
-tf_minutes = timeframe.in_seconds(timeframe.period) / 60
-bars_per_day = timeframe.isdaily or timeframe.isweekly or timeframe.ismonthly ? 1 : math.ceil(1440 / tf_minutes)
-vol_long_period = math.min(1000, vol_history_days * bars_per_day)
-vol_long = ta.stdev(driverRSI, vol_long_period)
+[spyOS1, spyOS2, spyOB1, spyOB2, spyAdaptiveLookback, spyAdaptiveReady, spyLongVolReady, spyUseAdaptive, spyCooldownBars, spyDivCooldownBars, spyAdaptiveRequested] = f_marketAdaptive(spyRSI, spyLongVol)
+[qqqOS1, qqqOS2, qqqOB1, qqqOB2, qqqAdaptiveLookback, qqqAdaptiveReady, qqqLongVolReady, qqqUseAdaptive, qqqCooldownBars, qqqDivCooldownBars, qqqAdaptiveRequested] = f_marketAdaptive(qqqRSI, qqqLongVol)
+[iwmOS1, iwmOS2, iwmOB1, iwmOB2, iwmAdaptiveLookback, iwmAdaptiveReady, iwmLongVolReady, iwmUseAdaptive, iwmCooldownBars, iwmDivCooldownBars, iwmAdaptiveRequested] = f_marketAdaptive(iwmRSI, iwmLongVol)
 
-// Step 3: 动态加权组合
-// 基础：70% 长期 + 30% 短期（偏向稳定）
-vol_base = vol_long * 0.7 + vol_short * 0.3
-
-// 如果近期波动显著高于长期（> 1.2倍），切换到短期主导
-recent_high = vol_short > vol_long * 1.2
-vol_dynamic = recent_high ? (vol_short * 0.6 + vol_long * 0.4) : vol_base
-
-// 保守下限：不低于长期波动的 80%
-vol_final = math.max(vol_dynamic, vol_long * 0.8)
-
-// Step 4: 统计公式计算 Lookback
-// n = (Z × σ / E)²  其中 Z=1.96 (95%置信度)
-stat_error = lookbackPrecision == "High" ? 2.0 : lookbackPrecision == "Normal" ? 2.5 : 3.5
-stat_required = math.pow(1.96 * vol_final / stat_error, 2)
-auto_lookback = int(math.max(100, math.min(1000, stat_required)))
-
-// Step 5: 应用模式选择
-adaptiveLookback_raw = lookbackMode == "Custom" ? lookbackCustom : 
-                       lookbackMode == "Fixed 252" ? 252 : auto_lookback
-
-// Step 6: 安全限制 - 确保不超过可用历史数据
-// 在图表早期，bar_index 可能小于计算出的 lookback
-adaptiveLookback = int(math.min(adaptiveLookback_raw, bar_index))
-
-//========================
-// Adaptive Threshold Selection (自适应阈值选择)
-//========================
-
-// 双重检测系统（快速触发 + 慢速确认，使用当前图表市场）
-// Dual detection system using current chart market's RSI
-vol_fast_period = int(rsiLen * 1.5)  // 快速检测：约 21 根 K 线（如果 RSI=14）
-vol_fast = ta.stdev(driverRSI, vol_fast_period)
-
-vol_slow_period = int(rsiLen * 3)    // 慢速确认：约 42 根 K 线
-vol_slow = ta.stdev(driverRSI, vol_slow_period)
-
-// 自动模式逻辑：快速检测 OR 慢速确认
-useAdaptive = thresholdMode == "Auto" ? 
-              (vol_fast > rsiVolThreshold or vol_slow > rsiVolThreshold * 1.2) : 
-              thresholdMode == "Adaptive"
-
-// Dynamic Cooldown Calculation (动态冷却计算)
-// 在波动率计算后应用动态冷却
-cooldownBars = useDynamicCooldown ? f_dynamicCooldown(cooldownBarsBase, vol_fast, rsiVolThreshold) : cooldownBarsBase
-divCooldownDynamic = useDynamicCooldown ? f_dynamicCooldown(divCooldownBars, vol_fast, rsiVolThreshold) : divCooldownBars
-
-[spyAdaptOS1, spyAdaptOS2, spyAdaptOB1, spyAdaptOB2] = f_adaptiveThresholds(spyRSI, adaptiveLookback)
-[qqqAdaptOS1, qqqAdaptOS2, qqqAdaptOB1, qqqAdaptOB2] = f_adaptiveThresholds(qqqRSI, adaptiveLookback)
-[iwmAdaptOS1, iwmAdaptOS2, iwmAdaptOB1, iwmAdaptOB2] = f_adaptiveThresholds(iwmRSI, adaptiveLookback)
-
-spyOS1 = useAdaptive ? spyAdaptOS1 : fixedRsiOversold1
-spyOS2 = useAdaptive ? spyAdaptOS2 : fixedRsiOversold2
-spyOB1 = useAdaptive ? spyAdaptOB1 : fixedRsiOverbought1
-spyOB2 = useAdaptive ? spyAdaptOB2 : fixedRsiOverbought2
-
-qqqOS1 = useAdaptive ? qqqAdaptOS1 : fixedRsiOversold1
-qqqOS2 = useAdaptive ? qqqAdaptOS2 : fixedRsiOversold2
-qqqOB1 = useAdaptive ? qqqAdaptOB1 : fixedRsiOverbought1
-qqqOB2 = useAdaptive ? qqqAdaptOB2 : fixedRsiOverbought2
-
-iwmOS1 = useAdaptive ? iwmAdaptOS1 : fixedRsiOversold1
-iwmOS2 = useAdaptive ? iwmAdaptOS2 : fixedRsiOversold2
-iwmOB1 = useAdaptive ? iwmAdaptOB1 : fixedRsiOverbought1
-iwmOB2 = useAdaptive ? iwmAdaptOB2 : fixedRsiOverbought2
+// 先验证信号实际使用的数据，长期统计尚未就绪仍允许短期/固定阈值回退。
+// Validate signal inputs first; long-term warmup can safely use short-term volatility and fixed RSI bands.
+spyTrendMA = ta.sma(spyC, trendMALen)
+qqqTrendMA = ta.sma(qqqC, trendMALen)
+iwmTrendMA = ta.sma(iwmC, trendMALen)
+spyUptrend = spyC > spyTrendMA
+qqqUptrend = qqqC > qqqTrendMA
+iwmUptrend = iwmC > iwmTrendMA
+spyDataReady = f_marketDataReady(spyC, spyRSI, spyTrendMA, spyHigh252, s5tw_live, s5fi_live, uvol_live, dvol_live, addValue, intradayMode)
+qqqDataReady = f_marketDataReady(qqqC, qqqRSI, qqqTrendMA, qqqHigh252, nctw_live, ncfi_live, uvolq_live, dvolq_live, addValue, intradayMode)
+iwmDataReady = f_marketDataReady(iwmC, iwmRSI, iwmTrendMA, iwmHigh252, r2tw_live, r2fi_live, uvol_live, dvol_live, addValue, intradayMode)
 
 //========================
 // Calculate Scores per Market
@@ -691,12 +684,7 @@ iwmOB2 = useAdaptive ? iwmAdaptOB2 : fixedRsiOverbought2
 //========================
 // v7.0: Apply Drawdown Bonus (回撤加分)
 //========================
-// v7.1 Fix: Use daily timeframe for 252-day high (intraday charts need daily reference)
-// 修复: 使用日线时间框架计算252日高点 (日内图表需要日线参考)
-spyHigh252 = f_secDaily(spySym, ta.highest(close, 252))
-qqqHigh252 = f_secDaily(qqqSym, ta.highest(close, 252))
-iwmHigh252 = f_secDaily(iwmSym, ta.highest(close, 252))
-
+// 252日高点已与长期日线统计一起请求。 / The 252-day high is fetched with daily statistics above.
 [spyDrawdownBonus, spyDrawdown] = f_drawdownBonus(spyC, spyHigh252)
 [qqqDrawdownBonus, qqqDrawdown] = f_drawdownBonus(qqqC, qqqHigh252)
 [iwmDrawdownBonus, iwmDrawdown] = f_drawdownBonus(iwmC, iwmHigh252)
@@ -713,8 +701,8 @@ spySellScore = spyScoreRaw
 qqqSellScore = qqqScoreRaw
 iwmSellScore = iwmScoreRaw
 
-// 显示评分 (面板显示买入评分，因其包含完整信息)
-// Display score uses buy score (includes all factors for dashboard)
+// 保留买入基础显示评分；面板风险状态在UI层选择原始卖出分。
+// Keep the buy display base; risk panel states select the raw sell score in the UI.
 spyScore = spyBuyScore
 qqqScore = qqqBuyScore
 iwmScore = iwmBuyScore
@@ -727,12 +715,12 @@ iwmScore = iwmBuyScore
 [iwmBuyQuality, iwmSellQuality, iwmPosFactor, iwmNegFactor] = f_signalQuality(iwmRsiS, iwmFiS, iwmTwS, iwmVolS, iwmAddS, intradayMode)
 
 // 信号质量过滤: 仅A/B级信号通过
-spyBuyQualityOK = not useSignalQuality or spyBuyQuality != "C"
-qqqBuyQualityOK = not useSignalQuality or qqqBuyQuality != "C"
-iwmBuyQualityOK = not useSignalQuality or iwmBuyQuality != "C"
-spySellQualityOK = not useSignalQuality or spySellQuality != "C"
-qqqSellQualityOK = not useSignalQuality or qqqSellQuality != "C"
-iwmSellQualityOK = not useSignalQuality or iwmSellQuality != "C"
+spyBuyQualityOK = spyDataReady and (not useSignalQuality or spyBuyQuality != "C")
+qqqBuyQualityOK = qqqDataReady and (not useSignalQuality or qqqBuyQuality != "C")
+iwmBuyQualityOK = iwmDataReady and (not useSignalQuality or iwmBuyQuality != "C")
+spySellQualityOK = spyDataReady and (not useSignalQuality or spySellQuality != "C")
+qqqSellQualityOK = qqqDataReady and (not useSignalQuality or qqqSellQuality != "C")
+iwmSellQualityOK = iwmDataReady and (not useSignalQuality or iwmSellQuality != "C")
 
 //========================
 // Divergence Calculation
@@ -745,12 +733,12 @@ div_lookback = int(rsiLen * 4)  // 如果 RSI=14，则 56 根 K 线
 [iwmDivStrength, iwmPriceZ, iwmRsiZ] = f_divergence(iwmC, iwmRSI, div_lookback)
 
 // 原始背离检测（在 OS2/OB2 区域触发，平衡质量与灵敏度）
-spyBullishDivRaw = useDivergence and spyDivStrength < -divZScoreThreshold and spyRSI < spyOS2
-spyBearishDivRaw = useDivergence and spyDivStrength > divZScoreThreshold and spyRSI > spyOB2
-qqqBullishDivRaw = useDivergence and qqqDivStrength < -divZScoreThreshold and qqqRSI < qqqOS2
-qqqBearishDivRaw = useDivergence and qqqDivStrength > divZScoreThreshold and qqqRSI > qqqOB2
-iwmBullishDivRaw = useDivergence and iwmDivStrength < -divZScoreThreshold and iwmRSI < iwmOS2
-iwmBearishDivRaw = useDivergence and iwmDivStrength > divZScoreThreshold and iwmRSI > iwmOB2
+spyBullishDivRaw = spyDataReady and useDivergence and spyDivStrength < -divZScoreThreshold and spyRSI < spyOS2
+spyBearishDivRaw = spyDataReady and useDivergence and spyDivStrength > divZScoreThreshold and spyRSI > spyOB2
+qqqBullishDivRaw = qqqDataReady and useDivergence and qqqDivStrength < -divZScoreThreshold and qqqRSI < qqqOS2
+qqqBearishDivRaw = qqqDataReady and useDivergence and qqqDivStrength > divZScoreThreshold and qqqRSI > qqqOB2
+iwmBullishDivRaw = iwmDataReady and useDivergence and iwmDivStrength < -divZScoreThreshold and iwmRSI < iwmOS2
+iwmBearishDivRaw = iwmDataReady and useDivergence and iwmDivStrength > divZScoreThreshold and iwmRSI > iwmOB2
 
 // 冷却期状态追踪
 var int spyLastBullDiv = na
@@ -761,42 +749,20 @@ var int iwmLastBullDiv = na
 var int iwmLastBearDiv = na
 
 // 应用冷却期过滤
-spyBullishDiv = f_applyCooldown(spyBullishDivRaw, divCooldownDynamic, spyLastBullDiv)
-spyBearishDiv = f_applyCooldown(spyBearishDivRaw, divCooldownDynamic, spyLastBearDiv)
-qqqBullishDiv = f_applyCooldown(qqqBullishDivRaw, divCooldownDynamic, qqqLastBullDiv)
-qqqBearishDiv = f_applyCooldown(qqqBearishDivRaw, divCooldownDynamic, qqqLastBearDiv)
-iwmBullishDiv = f_applyCooldown(iwmBullishDivRaw, divCooldownDynamic, iwmLastBullDiv)
-iwmBearishDiv = f_applyCooldown(iwmBearishDivRaw, divCooldownDynamic, iwmLastBearDiv)
+spyBullishDiv = f_applyCooldown(spyBullishDivRaw, spyDivCooldownBars, spyLastBullDiv)
+spyBearishDiv = f_applyCooldown(spyBearishDivRaw, spyDivCooldownBars, spyLastBearDiv)
+qqqBullishDiv = f_applyCooldown(qqqBullishDivRaw, qqqDivCooldownBars, qqqLastBullDiv)
+qqqBearishDiv = f_applyCooldown(qqqBearishDivRaw, qqqDivCooldownBars, qqqLastBearDiv)
+iwmBullishDiv = f_applyCooldown(iwmBullishDivRaw, iwmDivCooldownBars, iwmLastBullDiv)
+iwmBearishDiv = f_applyCooldown(iwmBearishDivRaw, iwmDivCooldownBars, iwmLastBearDiv)
 
-// 更新冷却期状态
-if spyBullishDiv
-    spyLastBullDiv := bar_index
-if spyBearishDiv
-    spyLastBearDiv := bar_index
-if qqqBullishDiv
-    qqqLastBullDiv := bar_index
-if qqqBearishDiv
-    qqqLastBearDiv := bar_index
-if iwmBullishDiv
-    iwmLastBullDiv := bar_index
-if iwmBearishDiv
-    iwmLastBearDiv := bar_index
-
-//========================
-// Trend MA & Signals (using modular function)
-//========================
-spyTrendMA = ta.sma(spyC, trendMALen)
-qqqTrendMA = ta.sma(qqqC, trendMALen)
-iwmTrendMA = ta.sma(iwmC, trendMALen)
-
-spyUptrend = spyC > spyTrendMA
-qqqUptrend = qqqC > qqqTrendMA
-iwmUptrend = iwmC > iwmTrendMA
+// Trend MA and readiness are calculated per market before signal generation.
+// 趋势均线与数据就绪状态已在前段按市场计算。
 
 // 原始信号生成 (v7.1: 分离买入/卖出评分)
-[spyStrongBotRaw, spyBotOnly, spyTopOnly, spyStrongTopRaw, spyElevatedRaw, spyBotRawBase, spyTopRawBase] = f_generateSignals(spyBuyScore, spySellScore, spyUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
-[qqqStrongBotRaw, qqqBotOnly, qqqTopOnly, qqqStrongTopRaw, qqqElevatedRaw, qqqBotRawBase, qqqTopRawBase] = f_generateSignals(qqqBuyScore, qqqSellScore, qqqUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
-[iwmStrongBotRaw, iwmBotOnly, iwmTopOnly, iwmStrongTopRaw, iwmElevatedRaw, iwmBotRawBase, iwmTopRawBase] = f_generateSignals(iwmBuyScore, iwmSellScore, iwmUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+[spyStrongBotRaw, spyBotOnly, spyTopOnly, spyStrongTopRaw, spyElevatedRaw, spyBotRawBase, spyTopRawBase] = f_generateSignals(spyDataReady ? spyBuyScore : na, spyDataReady ? spySellScore : na, spyUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+[qqqStrongBotRaw, qqqBotOnly, qqqTopOnly, qqqStrongTopRaw, qqqElevatedRaw, qqqBotRawBase, qqqTopRawBase] = f_generateSignals(qqqDataReady ? qqqBuyScore : na, qqqDataReady ? qqqSellScore : na, qqqUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
+[iwmStrongBotRaw, iwmBotOnly, iwmTopOnly, iwmStrongTopRaw, iwmElevatedRaw, iwmBotRawBase, iwmTopRawBase] = f_generateSignals(iwmDataReady ? iwmBuyScore : na, iwmDataReady ? iwmSellScore : na, iwmUptrend, adjBotThreshold, adjStrongBotThreshold, adjTopThreshold, adjStrongTopThreshold)
 
 // v7.0: 应用背离助推 (边缘信号可被背离触发) - v7.1: 使用买入评分
 spyBotAssisted = f_divergenceAssisted(spyBuyScore, adjBotThreshold, spyBullishDivRaw, useDivergenceAssist)
@@ -804,124 +770,31 @@ qqqBotAssisted = f_divergenceAssisted(qqqBuyScore, adjBotThreshold, qqqBullishDi
 iwmBotAssisted = f_divergenceAssisted(iwmBuyScore, adjBotThreshold, iwmBullishDivRaw, useDivergenceAssist)
 
 // v7.0: 应用信号质量过滤 (确保信号互斥)
-spyStrongBot = spyStrongBotRaw and spyBuyQualityOK
-spyBot = (spyBotOnly or (spyBotAssisted and not spyBotOnly)) and spyBuyQualityOK and not spyStrongBot
-spyTop = spyTopOnly and spySellQualityOK
-spyStrongTop = spyStrongTopRaw and spySellQualityOK
+spyStrongBot = spyDataReady and spyStrongBotRaw and spyBuyQualityOK
+spyBot = spyDataReady and (spyBotOnly or (spyBotAssisted and not spyBotOnly)) and spyBuyQualityOK and not spyStrongBot
+spyTop = spyDataReady and spyTopOnly and spySellQualityOK
+spyStrongTop = spyDataReady and spyStrongTopRaw and spySellQualityOK
 // v7.5: 质量过滤同样作用于 ELEVATED（与 CAUTION/REDUCE 一致）
 // v7.5: quality gate now applies to ELEVATED like CAUTION/REDUCE
-spyElevated = spyElevatedRaw and spySellQualityOK
+spyElevated = spyDataReady and spyElevatedRaw and spySellQualityOK
 spyBotRaw = (spyStrongBot or spyBot)
 spyTopRaw = (spyStrongTop or spyTop)
 
-qqqStrongBot = qqqStrongBotRaw and qqqBuyQualityOK
-qqqBot = (qqqBotOnly or (qqqBotAssisted and not qqqBotOnly)) and qqqBuyQualityOK and not qqqStrongBot
-qqqTop = qqqTopOnly and qqqSellQualityOK
-qqqStrongTop = qqqStrongTopRaw and qqqSellQualityOK
-qqqElevated = qqqElevatedRaw and qqqSellQualityOK
+qqqStrongBot = qqqDataReady and qqqStrongBotRaw and qqqBuyQualityOK
+qqqBot = qqqDataReady and (qqqBotOnly or (qqqBotAssisted and not qqqBotOnly)) and qqqBuyQualityOK and not qqqStrongBot
+qqqTop = qqqDataReady and qqqTopOnly and qqqSellQualityOK
+qqqStrongTop = qqqDataReady and qqqStrongTopRaw and qqqSellQualityOK
+qqqElevated = qqqDataReady and qqqElevatedRaw and qqqSellQualityOK
 qqqBotRaw = (qqqStrongBot or qqqBot)
 qqqTopRaw = (qqqStrongTop or qqqTop)
 
-iwmStrongBot = iwmStrongBotRaw and iwmBuyQualityOK
-iwmBot = (iwmBotOnly or (iwmBotAssisted and not iwmBotOnly)) and iwmBuyQualityOK and not iwmStrongBot
-iwmTop = iwmTopOnly and iwmSellQualityOK
-iwmStrongTop = iwmStrongTopRaw and iwmSellQualityOK
-iwmElevated = iwmElevatedRaw and iwmSellQualityOK
+iwmStrongBot = iwmDataReady and iwmStrongBotRaw and iwmBuyQualityOK
+iwmBot = iwmDataReady and (iwmBotOnly or (iwmBotAssisted and not iwmBotOnly)) and iwmBuyQualityOK and not iwmStrongBot
+iwmTop = iwmDataReady and iwmTopOnly and iwmSellQualityOK
+iwmStrongTop = iwmDataReady and iwmStrongTopRaw and iwmSellQualityOK
+iwmElevated = iwmDataReady and iwmElevatedRaw and iwmSellQualityOK
 iwmBotRaw = (iwmStrongBot or iwmBot)
 iwmTopRaw = (iwmStrongTop or iwmTop)
-
-//========================
-// Cooldown state
-//========================
-var int spyLastBot = na
-var int spyLastTop = na
-var int qqqLastBot = na
-var int qqqLastTop = na
-var int iwmLastBot = na
-var int iwmLastTop = na
-
-spyBotTrig = f_applyCooldown(spyBotRaw, cooldownBars, spyLastBot)
-spyTopTrig = f_applyCooldown(spyTopRaw, cooldownBars, spyLastTop)
-qqqBotTrig = f_applyCooldown(qqqBotRaw, cooldownBars, qqqLastBot)
-qqqTopTrig = f_applyCooldown(qqqTopRaw, cooldownBars, qqqLastTop)
-iwmBotTrig = f_applyCooldown(iwmBotRaw, cooldownBars, iwmLastBot)
-iwmTopTrig = f_applyCooldown(iwmTopRaw, cooldownBars, iwmLastTop)
-
-// Strong upgrades should still publish once when a live weak signal strengthens inside cooldown.
-spyStrongBotPrev = bar_index > 0 ? spyStrongBot[1] : false
-qqqStrongBotPrev = bar_index > 0 ? qqqStrongBot[1] : false
-iwmStrongBotPrev = bar_index > 0 ? iwmStrongBot[1] : false
-spyStrongTopPrev = bar_index > 0 ? spyStrongTop[1] : false
-qqqStrongTopPrev = bar_index > 0 ? qqqStrongTop[1] : false
-iwmStrongTopPrev = bar_index > 0 ? iwmStrongTop[1] : false
-spyBotRawPrev = bar_index > 0 ? spyBotRaw[1] : false
-qqqBotRawPrev = bar_index > 0 ? qqqBotRaw[1] : false
-iwmBotRawPrev = bar_index > 0 ? iwmBotRaw[1] : false
-spyTopRawPrev = bar_index > 0 ? spyTopRaw[1] : false
-qqqTopRawPrev = bar_index > 0 ? qqqTopRaw[1] : false
-iwmTopRawPrev = bar_index > 0 ? iwmTopRaw[1] : false
-
-spyStrongBotUpgrade = spyStrongBot and not spyStrongBotPrev and spyBotRawPrev
-qqqStrongBotUpgrade = qqqStrongBot and not qqqStrongBotPrev and qqqBotRawPrev
-iwmStrongBotUpgrade = iwmStrongBot and not iwmStrongBotPrev and iwmBotRawPrev
-spyStrongTopUpgrade = spyStrongTop and not spyStrongTopPrev and spyTopRawPrev
-qqqStrongTopUpgrade = qqqStrongTop and not qqqStrongTopPrev and qqqTopRawPrev
-iwmStrongTopUpgrade = iwmStrongTop and not iwmStrongTopPrev and iwmTopRawPrev
-
-spyBotPlot = spyBotTrig and spyBot
-qqqBotPlot = qqqBotTrig and qqqBot
-iwmBotPlot = iwmBotTrig and iwmBot
-spyTopPlot = spyTopTrig and spyTop
-qqqTopPlot = qqqTopTrig and qqqTop
-iwmTopPlot = iwmTopTrig and iwmTop
-spyStrongBotPlot = (spyBotTrig and spyStrongBot) or spyStrongBotUpgrade
-qqqStrongBotPlot = (qqqBotTrig and qqqStrongBot) or qqqStrongBotUpgrade
-iwmStrongBotPlot = (iwmBotTrig and iwmStrongBot) or iwmStrongBotUpgrade
-spyStrongTopPlot = (spyTopTrig and spyStrongTop) or spyStrongTopUpgrade
-qqqStrongTopPlot = (qqqTopTrig and qqqStrongTop) or qqqStrongTopUpgrade
-iwmStrongTopPlot = (iwmTopTrig and iwmStrongTop) or iwmStrongTopUpgrade
-spyElevatedPlot = spyElevated and not spyElevated[1]
-qqqElevatedPlot = qqqElevated and not qqqElevated[1]
-iwmElevatedPlot = iwmElevated and not iwmElevated[1]
-spyBullishDivPlot = spyBullishDiv and not spyBullishDiv[1]
-qqqBullishDivPlot = qqqBullishDiv and not qqqBullishDiv[1]
-iwmBullishDivPlot = iwmBullishDiv and not iwmBullishDiv[1]
-spyBearishDivPlot = spyBearishDiv and not spyBearishDiv[1]
-qqqBearishDivPlot = qqqBearishDiv and not qqqBearishDiv[1]
-iwmBearishDivPlot = iwmBearishDiv and not iwmBearishDiv[1]
-
-if spyBotTrig
-    spyLastBot := bar_index
-if spyTopTrig
-    spyLastTop := bar_index
-if qqqBotTrig
-    qqqLastBot := bar_index
-if qqqTopTrig
-    qqqLastTop := bar_index
-if iwmBotTrig
-    iwmLastBot := bar_index
-if iwmTopTrig
-    iwmLastTop := bar_index
-
-//========================
-// Aggregate resonance
-//========================
-spyBotRecent = f_recent(spyBotTrig, confirmBars)
-qqqBotRecent = f_recent(qqqBotTrig, confirmBars)
-iwmBotRecent = f_recent(iwmBotTrig, confirmBars)
-
-spyTopRecent = f_recent(spyTopTrig, confirmBars)
-qqqTopRecent = f_recent(qqqTopTrig, confirmBars)
-iwmTopRecent = f_recent(iwmTopTrig, confirmBars)
-
-agreeBot = (spyBotRecent ? 1 : 0) + (qqqBotRecent ? 1 : 0) + (iwmBotRecent ? 1 : 0)
-agreeTop = (spyTopRecent ? 1 : 0) + (qqqTopRecent ? 1 : 0) + (iwmTopRecent ? 1 : 0)
-
-aggBottom = agreeBot >= minAgree
-aggTop    = agreeTop >= minAgree
-
-aggBottomEdge = aggBottom and not aggBottom[1]
-aggTopEdge    = aggTop and not aggTop[1]
 
 // Realtime bars can trigger and then retract before close; latch alertable events so alerts, markers, and panel stay aligned.
 varip int spyBarBuyPlotState = 0
@@ -955,6 +828,75 @@ if barstate.isnew
     aggBottomEdgeBar := false
     aggTopEdgeBar := false
 
+//========================
+// Cooldown state
+//========================
+var int spyLastBot = na
+var int spyLastTop = na
+var int qqqLastBot = na
+var int qqqLastTop = na
+var int iwmLastBot = na
+var int iwmLastTop = na
+
+// Last accepted marker level, committed from the bar latch below.
+// 从本K线锁存提交的最近标记等级，防止已接受强信号被再次当作升级。
+var int spyLastBotLevel = 0
+var int spyLastTopLevel = 0
+var int qqqLastBotLevel = 0
+var int qqqLastTopLevel = 0
+var int iwmLastBotLevel = 0
+var int iwmLastTopLevel = 0
+
+spyBotTrig = f_applyCooldown(spyBotRaw, spyCooldownBars, spyLastBot)
+spyTopTrig = f_applyCooldown(spyTopRaw, spyCooldownBars, spyLastTop)
+qqqBotTrig = f_applyCooldown(qqqBotRaw, qqqCooldownBars, qqqLastBot)
+qqqTopTrig = f_applyCooldown(qqqTopRaw, qqqCooldownBars, qqqLastTop)
+iwmBotTrig = f_applyCooldown(iwmBotRaw, iwmCooldownBars, iwmLastBot)
+iwmTopTrig = f_applyCooldown(iwmTopRaw, iwmCooldownBars, iwmLastTop)
+
+// Strong upgrades should still publish once when a live weak signal strengthens inside cooldown.
+spyStrongBotPrev = bar_index > 0 ? spyStrongBot[1] : false
+qqqStrongBotPrev = bar_index > 0 ? qqqStrongBot[1] : false
+iwmStrongBotPrev = bar_index > 0 ? iwmStrongBot[1] : false
+spyStrongTopPrev = bar_index > 0 ? spyStrongTop[1] : false
+qqqStrongTopPrev = bar_index > 0 ? qqqStrongTop[1] : false
+iwmStrongTopPrev = bar_index > 0 ? iwmStrongTop[1] : false
+spyBotRawPrev = bar_index > 0 ? spyBotRaw[1] : false
+qqqBotRawPrev = bar_index > 0 ? qqqBotRaw[1] : false
+iwmBotRawPrev = bar_index > 0 ? iwmBotRaw[1] : false
+spyTopRawPrev = bar_index > 0 ? spyTopRaw[1] : false
+qqqTopRawPrev = bar_index > 0 ? qqqTopRaw[1] : false
+iwmTopRawPrev = bar_index > 0 ? iwmTopRaw[1] : false
+
+spyStrongBotUpgrade = spyStrongBot and spyLastBotLevel == 1 and not spyStrongBotPrev and (spyBotRawPrev or spyBarBuyPlotState[1] > 0)
+qqqStrongBotUpgrade = qqqStrongBot and qqqLastBotLevel == 1 and not qqqStrongBotPrev and (qqqBotRawPrev or qqqBarBuyPlotState[1] > 0)
+iwmStrongBotUpgrade = iwmStrongBot and iwmLastBotLevel == 1 and not iwmStrongBotPrev and (iwmBotRawPrev or iwmBarBuyPlotState[1] > 0)
+spyStrongTopUpgrade = spyStrongTop and spyLastTopLevel == 2 and not spyStrongTopPrev and (spyTopRawPrev or spyBarSellPlotState[1] >= 2)
+qqqStrongTopUpgrade = qqqStrongTop and qqqLastTopLevel == 2 and not qqqStrongTopPrev and (qqqTopRawPrev or qqqBarSellPlotState[1] >= 2)
+iwmStrongTopUpgrade = iwmStrongTop and iwmLastTopLevel == 2 and not iwmStrongTopPrev and (iwmTopRawPrev or iwmBarSellPlotState[1] >= 2)
+
+spyBotPlot = spyBotTrig and spyBot
+qqqBotPlot = qqqBotTrig and qqqBot
+iwmBotPlot = iwmBotTrig and iwmBot
+spyTopPlot = spyTopTrig and spyTop
+qqqTopPlot = qqqTopTrig and qqqTop
+iwmTopPlot = iwmTopTrig and iwmTop
+spyStrongBotPlot = (spyBotTrig and spyStrongBot) or spyStrongBotUpgrade
+qqqStrongBotPlot = (qqqBotTrig and qqqStrongBot) or qqqStrongBotUpgrade
+iwmStrongBotPlot = (iwmBotTrig and iwmStrongBot) or iwmStrongBotUpgrade
+spyStrongTopPlot = (spyTopTrig and spyStrongTop) or spyStrongTopUpgrade
+qqqStrongTopPlot = (qqqTopTrig and qqqStrongTop) or qqqStrongTopUpgrade
+iwmStrongTopPlot = (iwmTopTrig and iwmStrongTop) or iwmStrongTopUpgrade
+spyElevatedPlot = spyElevated and not spyElevated[1] and nz(spyBarSellPlotState[1], 0) != 1
+qqqElevatedPlot = qqqElevated and not qqqElevated[1] and nz(qqqBarSellPlotState[1], 0) != 1
+iwmElevatedPlot = iwmElevated and not iwmElevated[1] and nz(iwmBarSellPlotState[1], 0) != 1
+spyBullishDivPlot = spyBullishDiv and not spyBullishDiv[1]
+qqqBullishDivPlot = qqqBullishDiv and not qqqBullishDiv[1]
+iwmBullishDivPlot = iwmBullishDiv and not iwmBullishDiv[1]
+spyBearishDivPlot = spyBearishDiv and not spyBearishDiv[1]
+qqqBearishDivPlot = qqqBearishDiv and not qqqBearishDiv[1]
+iwmBearishDivPlot = iwmBearishDiv and not iwmBearishDiv[1]
+
 spyBarBuyPlotState := math.max(spyBarBuyPlotState, spyStrongBotPlot ? 2 : spyBotPlot ? 1 : 0)
 qqqBarBuyPlotState := math.max(qqqBarBuyPlotState, qqqStrongBotPlot ? 2 : qqqBotPlot ? 1 : 0)
 iwmBarBuyPlotState := math.max(iwmBarBuyPlotState, iwmStrongBotPlot ? 2 : iwmBotPlot ? 1 : 0)
@@ -967,8 +909,6 @@ iwmBullishDivPlotBar := iwmBullishDivPlotBar or iwmBullishDivPlot
 spyBearishDivPlotBar := spyBearishDivPlotBar or spyBearishDivPlot
 qqqBearishDivPlotBar := qqqBearishDivPlotBar or qqqBearishDivPlot
 iwmBearishDivPlotBar := iwmBearishDivPlotBar or iwmBearishDivPlot
-aggBottomEdgeBar := aggBottomEdgeBar or aggBottomEdge
-aggTopEdgeBar := aggTopEdgeBar or aggTopEdge
 
 spyStrongBotPlotBar = spyBarBuyPlotState == 2
 qqqStrongBotPlotBar = qqqBarBuyPlotState == 2
@@ -986,11 +926,70 @@ spyElevatedPlotBar = spyBarSellPlotState == 1
 qqqElevatedPlotBar = qqqBarSellPlotState == 1
 iwmElevatedPlotBar = iwmBarSellPlotState == 1
 
+// Accepted events drive cooldown and resonance, even if raw conditions fade before close.
+// 已接受事件统一驱动冷却与共振，即使收盘前原始条件消失也保留。
+spyBotEvent = spyBarBuyPlotState > 0
+spyTopEvent = spyBarSellPlotState >= 2
+if spyBotEvent
+    spyLastBot := bar_index
+    spyLastBotLevel := spyBarBuyPlotState
+if spyTopEvent
+    spyLastTop := bar_index
+    spyLastTopLevel := spyBarSellPlotState
+if spyBullishDivPlotBar
+    spyLastBullDiv := bar_index
+if spyBearishDivPlotBar
+    spyLastBearDiv := bar_index
+qqqBotEvent = qqqBarBuyPlotState > 0
+qqqTopEvent = qqqBarSellPlotState >= 2
+if qqqBotEvent
+    qqqLastBot := bar_index
+    qqqLastBotLevel := qqqBarBuyPlotState
+if qqqTopEvent
+    qqqLastTop := bar_index
+    qqqLastTopLevel := qqqBarSellPlotState
+if qqqBullishDivPlotBar
+    qqqLastBullDiv := bar_index
+if qqqBearishDivPlotBar
+    qqqLastBearDiv := bar_index
+iwmBotEvent = iwmBarBuyPlotState > 0
+iwmTopEvent = iwmBarSellPlotState >= 2
+if iwmBotEvent
+    iwmLastBot := bar_index
+    iwmLastBotLevel := iwmBarBuyPlotState
+if iwmTopEvent
+    iwmLastTop := bar_index
+    iwmLastTopLevel := iwmBarSellPlotState
+if iwmBullishDivPlotBar
+    iwmLastBullDiv := bar_index
+if iwmBearishDivPlotBar
+    iwmLastBearDiv := bar_index
+
+//========================
+// Aggregate resonance / 多市场共振
+//========================
+spyBotRecent = f_recent(spyBotEvent, confirmBars)
+qqqBotRecent = f_recent(qqqBotEvent, confirmBars)
+iwmBotRecent = f_recent(iwmBotEvent, confirmBars)
+agreeBot = (spyBotRecent ? 1 : 0) + (qqqBotRecent ? 1 : 0) + (iwmBotRecent ? 1 : 0)
+spyTopRecent = f_recent(spyTopEvent, confirmBars)
+qqqTopRecent = f_recent(qqqTopEvent, confirmBars)
+iwmTopRecent = f_recent(iwmTopEvent, confirmBars)
+agreeTop = (spyTopRecent ? 1 : 0) + (qqqTopRecent ? 1 : 0) + (iwmTopRecent ? 1 : 0)
+
+aggDataReady = spyDataReady and qqqDataReady and iwmDataReady
+aggBottom = aggDataReady and agreeBot >= minAgree
+aggTop = aggDataReady and agreeTop >= minAgree
+aggBottomEdge = aggBottom and not aggBottom[1]
+aggTopEdge = aggTop and not aggTop[1]
+aggBottomEdgeBar := aggBottomEdgeBar or aggBottomEdge
+aggTopEdgeBar := aggTopEdgeBar or aggTopEdge
+
 //========================
 // v7.0: Tiered Resonance System (分级共振)
 //========================
-[botResonanceStrength, botResonanceBonus, botSyncResonance, botSyncCount, botWindowCount] = f_resonanceStrength(spyBotTrig, qqqBotTrig, iwmBotTrig, spyBotRecent, qqqBotRecent, iwmBotRecent)
-[topResonanceStrength, topResonanceBonus, topSyncResonance, topSyncCount, topWindowCount] = f_resonanceStrength(spyTopTrig, qqqTopTrig, iwmTopTrig, spyTopRecent, qqqTopRecent, iwmTopRecent)
+[botResonanceStrength, botResonanceBonus, botSyncResonance, botSyncCount, botWindowCount] = f_resonanceStrength(spyBotEvent, qqqBotEvent, iwmBotEvent, spyBotRecent, qqqBotRecent, iwmBotRecent)
+[topResonanceStrength, topResonanceBonus, topSyncResonance, topSyncCount, topWindowCount] = f_resonanceStrength(spyTopEvent, qqqTopEvent, iwmTopEvent, spyTopRecent, qqqTopRecent, iwmTopRecent)
 
 //========================
 // Plot selection (ticker 检测已在前面完成)
@@ -1001,6 +1000,7 @@ showSpy = modePlot == "SPY"
 showQqq = modePlot == "QQQ"
 showIwm = modePlot == "IWM"
 showAgg = modePlot == "AGG(共振)"
+displayDataReady = showSpy ? spyDataReady : showQqq ? qqqDataReady : showIwm ? iwmDataReady : aggDataReady
 
 // v7.0: Add resonance bonus to display score
 displayResonanceBonus = showAgg ? botResonanceBonus : 0.0
@@ -1019,12 +1019,37 @@ displayBullishDiv = showSpy ? spyBullishDivPlotBar : showQqq ? qqqBullishDivPlot
 displayBearishDiv = showSpy ? spyBearishDivPlotBar : showQqq ? qqqBearishDivPlotBar : showIwm ? iwmBearishDivPlotBar : (spyBearishDivPlotBar or qqqBearishDivPlotBar or iwmBearishDivPlotBar)
 
 // v7.0: Display signal quality and drawdown
-displayBuyQuality = showSpy ? spyBuyQuality : showQqq ? qqqBuyQuality : showIwm ? iwmBuyQuality : (spyPosFactor >= qqqPosFactor and spyPosFactor >= iwmPosFactor ? spyBuyQuality : qqqPosFactor >= iwmPosFactor ? qqqBuyQuality : iwmBuyQuality)
+displayPosFactor = showSpy ? spyPosFactor : showQqq ? qqqPosFactor : showIwm ? iwmPosFactor : int((spyPosFactor + qqqPosFactor + iwmPosFactor) / 3)
+displayBuyQuality = f_qualityGrade(displayPosFactor)
 displayDrawdown = showSpy ? spyDrawdown : showQqq ? qqqDrawdown : showIwm ? iwmDrawdown : (spyDrawdown + qqqDrawdown + iwmDrawdown) / 3
 displayDrawdownBonus = showSpy ? spyDrawdownBonus : showQqq ? qqqDrawdownBonus : showIwm ? iwmDrawdownBonus : (spyDrawdownBonus + qqqDrawdownBonus + iwmDrawdownBonus) / 3
-displayPosFactor = showSpy ? spyPosFactor : showQqq ? qqqPosFactor : showIwm ? iwmPosFactor : int((spyPosFactor + qqqPosFactor + iwmPosFactor) / 3)
 displayUptrend = showSpy ? spyUptrend : showQqq ? qqqUptrend : showIwm ? iwmUptrend : (spyUptrend and qqqUptrend) or (spyUptrend and iwmUptrend) or (qqqUptrend and iwmUptrend)
 displayElevated = showSpy ? spyElevated : showQqq ? qqqElevated : showIwm ? iwmElevated : (spyElevated or qqqElevated or iwmElevated)
+
+// 信号等级函数 (优先级越高值越大)
+// 5=恐慌+共振 | 4=恐慌低点 | 3=共振 | 2=背离 | 1=低吸/观望
+f_buy_level(_strongBot, _bot, _resonance, _div) =>
+    // 仅在当前显示路径已有主买入触发时才允许 Lv2/Lv3 升级，避免“只提醒不落图”
+    // Only allow Lv2/Lv3 upgrades when a visible base buy trigger exists on the current display path.
+    hasBaseBuy = _strongBot or _bot
+    if not hasBaseBuy
+        0
+    else
+        _strongBot and _resonance ? 5 : _strongBot ? 4 : _resonance ? 3 : _div ? 2 : 1
+
+f_sell_level(_strongTop, _top, _resonance, _div, _elevated) =>
+    // 仅在当前显示路径已有主风险触发时才允许 Lv2/Lv3 升级，避免“只提醒不落图”
+    // Only allow Lv2/Lv3 upgrades when a visible base risk trigger exists on the current display path.
+    hasBaseSell = _strongTop or _top or _elevated
+    if not hasBaseSell
+        0
+    else
+        _strongTop and _resonance ? 5 : _strongTop ? 4 : _resonance ? 3 : _div ? 2 : 1
+
+// Resolve conflicting visible events by level; ties keep buy-side compatibility.
+// 按可见事件等级裁决双侧冲突，同级保留买入优先兼容行为。
+f_eventSide(_buyLevel, _sellLevel) =>
+    _buyLevel > 0 and _buyLevel >= _sellLevel ? 1 : _sellLevel > 0 ? -1 : 0
 
 //========================
 // Signal Zone State (v7.0: 信号区间状态跟踪)
@@ -1032,13 +1057,13 @@ displayElevated = showSpy ? spyElevated : showQqq ? qqqElevated : showIwm ? iwmE
 // 信号触发条件 (使用当前显示模式的本K线锁存信号)
 displayBotTrig = showSpy ? (spyBotPlotBar or spyStrongBotPlotBar) : showQqq ? (qqqBotPlotBar or qqqStrongBotPlotBar) : showIwm ? (iwmBotPlotBar or iwmStrongBotPlotBar) : aggBottomEdgeBar
 displayTopTrig = showSpy ? (spyTopPlotBar or spyStrongTopPlotBar) : showQqq ? (qqqTopPlotBar or qqqStrongTopPlotBar) : showIwm ? (iwmTopPlotBar or iwmStrongTopPlotBar) : aggTopEdgeBar
-displayStrongBotSignal = showSpy ? spyStrongBot : showQqq ? qqqStrongBot : showIwm ? iwmStrongBot : (aggBottom and displayScore >= adjStrongBotThreshold)
-displayBotOnlySignal = showSpy ? spyBot : showQqq ? qqqBot : showIwm ? iwmBot : (aggBottom and displayScore >= adjBotThreshold and displayScore < adjStrongBotThreshold)
-displayStrongTopSignal = showSpy ? spyStrongTop : showQqq ? qqqStrongTop : showIwm ? iwmStrongTop : (aggTop and displayScore <= adjStrongTopThreshold)
-displayTopOnlySignal = showSpy ? spyTop : showQqq ? qqqTop : showIwm ? iwmTop : (aggTop and displayScore <= adjTopThreshold and displayScore > adjStrongTopThreshold)
+displayStrongBotSignal = showSpy ? spyStrongBot : showQqq ? qqqStrongBot : showIwm ? iwmStrongBot : false
+displayBotOnlySignal = showSpy ? spyBot : showQqq ? qqqBot : showIwm ? iwmBot : aggBottom
+displayStrongTopSignal = showSpy ? spyStrongTop : showQqq ? qqqStrongTop : showIwm ? iwmStrongTop : false
+displayTopOnlySignal = showSpy ? spyTop : showQqq ? qqqTop : showIwm ? iwmTop : aggTop
 displayBotSignal = displayStrongBotSignal or displayBotOnlySignal
-alertBuySideActive = showSpy ? (spyStrongBot or spyBot) : showQqq ? (qqqStrongBot or qqqBot) : showIwm ? (iwmStrongBot or iwmBot) : (aggBottom and displayScore >= adjBotThreshold)
-alertSellSideActive = showSpy ? (spyStrongTop or spyTop or spyElevated) : showQqq ? (qqqStrongTop or qqqTop or qqqElevated) : showIwm ? (iwmStrongTop or iwmTop or iwmElevated) : (aggTop and displayScore <= adjTopThreshold)
+alertBuySideActive = showSpy ? (spyStrongBot or spyBot) : showQqq ? (qqqStrongBot or qqqBot) : showIwm ? (iwmStrongBot or iwmBot) : aggBottom
+alertSellSideActive = showSpy ? (spyStrongTop or spyTop or spyElevated) : showQqq ? (qqqStrongTop or qqqTop or qqqElevated) : showIwm ? (iwmStrongTop or iwmTop or iwmElevated) : aggTop
 displayStrongBotPlotTrig = showSpy ? spyStrongBotPlotBar : showQqq ? qqqStrongBotPlotBar : showIwm ? iwmStrongBotPlotBar : false
 displayBotPlotTrig = showSpy ? spyBotPlotBar : showQqq ? qqqBotPlotBar : showIwm ? iwmBotPlotBar : false
 displayStrongTopPlotTrig = showSpy ? spyStrongTopPlotBar : showQqq ? qqqStrongTopPlotBar : showIwm ? iwmStrongTopPlotBar : false
@@ -1046,37 +1071,29 @@ displayTopPlotTrig = showSpy ? spyTopPlotBar : showQqq ? qqqTopPlotBar : showIwm
 displayElevatedPlotTrig = showSpy ? spyElevatedPlotBar : showQqq ? qqqElevatedPlotBar : showIwm ? iwmElevatedPlotBar : false
 displayUsesPlottedSignalState = showSpy or showQqq or showIwm
 
+displayBuyEventLevel = f_buy_level(displayStrongBotPlotTrig, displayBotTrig, aggBottomEdgeBar, displayUsesPlottedSignalState and displayBullishDiv)
+displaySellEventLevel = f_sell_level(displayStrongTopPlotTrig, displayTopTrig, aggTopEdgeBar, displayUsesPlottedSignalState and displayBearishDiv, displayElevatedPlotTrig)
+displayEventSide = f_eventSide(displayBuyEventLevel, displaySellEventLevel)
+
 // HOLD 区间: 评分在买入和卖出阈值之间（卖出侧用原始卖出评分）
 // HOLD zone: between buy and sell thresholds (sell side uses the raw sell score)
-isHoldZone = displayScore < adjBotThreshold and displaySellScore > adjTopThreshold
+isHoldZone = displayDataReady and displayScore < adjBotThreshold and displaySellScore > adjTopThreshold
 
 // 使用 var 跟踪当前区间状态 (0=无, 1=买入区间, -1=卖出区间)
 var int signalZoneState = 0
 var int panelSignalState = 0
 
-// 状态转换逻辑（与本K线锁存触发口径一致）
-if displayBotTrig
-    signalZoneState := 1  // 进入买入区间
-else if displayTopTrig
-    signalZoneState := -1  // 进入卖出区间
+// Panel and zone use the same highest visible event, including realtime bar latches.
+// 面板与区间统一跟随最高可见事件，包含实时K线锁存。
+if displayEventSide != 0
+    signalZoneState := displayEventSide
+    if displayEventSide == 1
+        panelSignalState := displayStrongBotPlotTrig ? 2 : 1
+    else
+        panelSignalState := displayStrongTopPlotTrig ? -3 : displayTopTrig ? -2 : -1
 else if isHoldZone
-    signalZoneState := 0  // 回到 HOLD，结束区间
-
-if displayUsesPlottedSignalState
-    if displayStrongBotPlotTrig
-        panelSignalState := 2
-    else if displayBotPlotTrig
-        panelSignalState := 1
-    else if displayStrongTopPlotTrig
-        panelSignalState := -3
-    else if displayTopPlotTrig
-        panelSignalState := -2
-    else if displayElevatedPlotTrig
-        panelSignalState := -1
-    else if isHoldZone
-        panelSignalState := 0
-else
-    panelSignalState := displayStrongBotSignal ? 2 : displayBotOnlySignal ? 1 : displayElevated ? -1 : displayStrongTopSignal ? -3 : displayTopOnlySignal ? -2 : 0
+    signalZoneState := 0
+    panelSignalState := 0
 
 panelStrongBotSignal = panelSignalState == 2
 panelBotOnlySignal = panelSignalState == 1
@@ -1091,8 +1108,8 @@ buyZoneColor = color.new(color.lime, 90)  // 绿色半透明
 sellZoneColor = color.new(color.red, 90)  // 红色半透明
 
 // 绘制背景
-bgcolor(showSignalZone and signalZoneState == 1 ? buyZoneColor : na, title="Buy Zone Background")
-bgcolor(showSignalZone and signalZoneState == -1 ? sellZoneColor : na, title="Sell Zone Background")
+bgcolor(showSignalZone and displayDataReady and signalZoneState == 1 ? buyZoneColor : na, title="Buy Zone Background")
+bgcolor(showSignalZone and displayDataReady and signalZoneState == -1 ? sellZoneColor : na, title="Sell Zone Background")
 
 //========================
 // Plot shapes
@@ -1165,6 +1182,18 @@ f_getFontSize(_size) =>
         => size.small
 
 // Dashboard display variables
+// Current factor context follows the panel side; risk scores never include a buy bonus.
+// 当前因子信息跟随面板方向；风险评分不包含买入回撤加分。
+displayNegFactor = showSpy ? spyNegFactor : showQqq ? qqqNegFactor : showIwm ? iwmNegFactor : int((spyNegFactor + qqqNegFactor + iwmNegFactor) / 3)
+displaySellQuality = f_qualityGrade(displayNegFactor)
+displayPanelFactorCount = panelSellActive ? displayNegFactor : displayPosFactor
+displayPanelQuality = f_qualityGrade(displayPanelFactorCount)
+displayPanelScore = panelSellActive ? displaySellScore : displayScore
+displayLongVolReady = showSpy ? spyLongVolReady : showQqq ? qqqLongVolReady : showIwm ? iwmLongVolReady : spyLongVolReady and qqqLongVolReady and iwmLongVolReady
+displayLongVolSamples = showSpy ? spyLongVolSamples : showQqq ? qqqLongVolSamples : showIwm ? iwmLongVolSamples : math.min(spyLongVolSamples, math.min(qqqLongVolSamples, iwmLongVolSamples))
+displayAdaptiveFallback = showSpy ? (spyAdaptiveRequested and not spyAdaptiveReady) : showQqq ? (qqqAdaptiveRequested and not qqqAdaptiveReady) : showIwm ? (iwmAdaptiveRequested and not iwmAdaptiveReady) : (spyAdaptiveRequested and not spyAdaptiveReady) or (qqqAdaptiveRequested and not qqqAdaptiveReady) or (iwmAdaptiveRequested and not iwmAdaptiveReady)
+displayWarmingUp = thresholdMode != "Fixed" and ((lookbackMode == "Auto" and not displayLongVolReady) or displayAdaptiveFallback)
+dataStatus = not displayDataReady ? "WAIT DATA / 等待数据" : displayWarmingUp ? "WARMUP / 预热" : ""
 useMobileMode = dashboardMode == "Mobile"
 dashboardPos = f_getPosition(dashboardPosition)
 fontSize = f_getFontSize(dashboardFontSize)
@@ -1173,9 +1202,9 @@ fontSize = f_getFontSize(dashboardFontSize)
 fontSizeHeader = size.normal
 
 // Prepare signal text (used in both modes)
-totalColor = panelBuyActive ? color.lime : panelElevatedSignal ? color.yellow : panelSellActive ? color.red : color.gray
-signalText = panelStrongBotSignal ? "PANIC LOW" : panelBotOnlySignal ? "BUY ZONE" : panelElevatedSignal ? "ELEVATED" : panelStrongTopSignal ? "REDUCE" : panelTopOnlySignal ? "CAUTION" : "HOLD"
-signalEmoji = panelStrongBotSignal ? "🚀" : panelBotOnlySignal ? "📈" : panelElevatedSignal ? "⭐" : panelStrongTopSignal ? "⚠️" : panelTopOnlySignal ? "⚡" : "⚪"
+totalColor = not displayDataReady ? color.gray : panelBuyActive ? color.lime : panelElevatedSignal ? color.yellow : panelSellActive ? color.red : color.gray
+signalText = not displayDataReady ? "WAIT DATA / 等待数据" : showAgg and (panelBuyActive or panelSellActive) ? "RESONANCE / 共振" : panelStrongBotSignal ? "PANIC LOW" : panelBotOnlySignal ? "BUY ZONE" : panelElevatedSignal ? "ELEVATED" : panelStrongTopSignal ? "REDUCE" : panelTopOnlySignal ? "CAUTION" : "HOLD"
+signalEmoji = not displayDataReady ? "⚪" : showAgg and panelBuyActive ? "🔥" : showAgg and panelSellActive ? "❄️" : panelStrongBotSignal ? "🚀" : panelBotOnlySignal ? "📈" : panelElevatedSignal ? "⭐" : panelStrongTopSignal ? "⚠️" : panelTopOnlySignal ? "⚡" : "⚪"
 
 //========================
 // v7.3 Filter Status Detection (过滤状态检测)
@@ -1195,17 +1224,17 @@ isSellZoneFiltered = displaySellScore <= adjTopThreshold and displayUptrend and 
 isBearMarketFiltered = not displayUptrend and useTrendFilter and displayScore >= adjBotThreshold and displayScore < adjStrongBotThreshold and not (displayBotTrig or displayBotSignal)
 
 // 过滤状态文本和颜色
-filterStatus = isBearMarketFiltered ? "🚫" : isBuyZoneFiltered ? "✋ WAIT" : isSellZoneFiltered ? "☕ HOLD" : "👀"
-filterColor = isBearMarketFiltered ? color.gray : isBuyZoneFiltered ? color.yellow : isSellZoneFiltered ? color.orange : color.gray
-hasFilterStatus = isBearMarketFiltered or isBuyZoneFiltered or isSellZoneFiltered
+filterStatus = dataStatus != "" ? dataStatus : isBearMarketFiltered ? "🚫" : isBuyZoneFiltered ? "✋ WAIT" : isSellZoneFiltered ? "☕ HOLD" : "👀"
+filterColor = not displayDataReady ? color.gray : displayWarmingUp ? color.yellow : isBearMarketFiltered ? color.gray : isBuyZoneFiltered ? color.yellow : isSellZoneFiltered ? color.orange : color.gray
+hasFilterStatus = dataStatus != "" or isBearMarketFiltered or isBuyZoneFiltered or isSellZoneFiltered
 
 // v7.3 Dynamic background color (动态背景色)
-signalBgColor = panelBuyActive ? c_bg_buy : (panelElevatedSignal or panelSellActive) ? c_bg_sell : c_bg_hold
+signalBgColor = not displayDataReady ? c_bg_hold : panelBuyActive ? c_bg_buy : (panelElevatedSignal or panelSellActive) ? c_bg_sell : c_bg_hold
 
 // v7.2: Prepare market status indicators for three markets
-spyStatus = f_marketStatus(spyScore, adjBotThreshold, adjTopThreshold)
-qqqStatus = f_marketStatus(qqqScore, adjBotThreshold, adjTopThreshold)
-iwmStatus = f_marketStatus(iwmScore, adjBotThreshold, adjTopThreshold)
+spyStatus = f_marketStatus(spyBuyScore, spySellScore, adjBotThreshold, adjTopThreshold, spyDataReady)
+qqqStatus = f_marketStatus(qqqBuyScore, qqqSellScore, adjBotThreshold, adjTopThreshold, qqqDataReady)
+iwmStatus = f_marketStatus(iwmBuyScore, iwmSellScore, adjBotThreshold, adjTopThreshold, iwmDataReady)
 
 // v7.3: frameColor removed - using borderless dark theme
 
@@ -1219,7 +1248,7 @@ if showDashboard and barstate.islast
         var table dashboardMobile = table.new(dashboardPos, 1, 2, bgcolor=c_bg_row, frame_width=0, border_width=0)
 
         // Row 0: Signal + Score + Trend (信号 + 分数 + 趋势)
-        scoreWithTrend = str.tostring(displayScore, "+#.#;-#.#") + (displayUptrend ? "↑" : "↓")
+        scoreWithTrend = displayDataReady ? str.tostring(displayPanelScore, "+#.#;-#.#") + (displayUptrend ? "↑" : "↓") : ""
         signalLine = signalEmoji + " " + signalText + " " + scoreWithTrend
         table.cell(dashboardMobile, 0, 0, signalLine, bgcolor=signalBgColor, text_color=totalColor, text_size=fontSizeHeader, text_halign=text.align_left)
 
@@ -1233,46 +1262,47 @@ if showDashboard and barstate.islast
         var table dashboard = table.new(dashboardPos, 1, 7, bgcolor=c_bg_row, frame_width=0, border_width=0)
         
         // Row 0: Signal + Score (信号 + 分数)
-        scoreStr = str.tostring(displayScore, "+#.#;-#.#") + (displayUptrend ? "↑" : "↓")
+        scoreStr = displayDataReady ? str.tostring(displayPanelScore, "+#.#;-#.#") + (displayUptrend ? "↑" : "↓") : ""
         row0 = signalEmoji + " " + signalText + " " + scoreStr
         table.cell(dashboard, 0, 0, row0, bgcolor=signalBgColor, text_color=totalColor, text_size=fontSizeHeader, text_halign=text.align_left)
 
         // Row 1: Score Progress Bar (分数条)
-        scoreBar = f_centeredBar(displayScore, 8.0, 8)
+        scoreBarMax = panelSellActive ? (intradayMode ? 7 : maxSellScore) : (intradayMode ? 7 : maxBuyScore) + (useDrawdownBonus ? 3 : 0) + (showAgg ? 1 : 0)
+        scoreBar = displayDataReady ? f_centeredBar(displayPanelScore, scoreBarMax, 8) : "—"
         table.cell(dashboard, 0, 1, scoreBar, bgcolor=signalBgColor, text_color=totalColor, text_size=fontSize, text_halign=text.align_left)
 
         // Row 2: RSI & Vol (合并)
-        rsiColor = displayRsiS > 0 ? color.lime : displayRsiS < 0 ? color.red : color.gray
         rsiBar = f_progressBar(displayRsiS + 2, 0, 4, 4)
-        volColor = displayVolS > 0 ? color.lime : displayVolS < 0 ? color.red : color.gray
         volBar = f_progressBar(displayVolS + 2, 0, 4, 4)
-        row2 = "RSI" + rsiBar + str.tostring(displayRsiS, "#") + " Vol" + volBar + str.tostring(displayVolS, "#")
+        row2 = displayDataReady ? "RSI" + rsiBar + str.tostring(displayRsiS, "#") + " Vol" + volBar + str.tostring(displayVolS, "#") : "RSI / Vol —"
         table.cell(dashboard, 0, 2, row2, bgcolor=c_bg_row, text_color=c_text_dim, text_size=fontSize, text_halign=text.align_left)
 
-        // Row 3: FI/ADD & TW (合并)
-        twColor = displayTwS > 0 ? color.lime : displayTwS < 0 ? color.red : color.gray
-        twBar = f_progressBar(displayTwS + 3, 0, 6, 4)
+        // Row 3: daily factors or intraday ADD plus actual daily history coverage.
+        // 第3行：日线因子，或日内 ADD 与实际日线历史覆盖。
+        twBar = f_progressBar(displayTwS, -3, 1, 4)
         string row3 = ""
         if intradayMode
             addBar = f_progressBar(displayAddS + 3, 0, 6, 4)
-            row3 := "ADD" + addBar + str.tostring(displayAddS, "#") + " TW" + twBar + str.tostring(displayTwS, "#")
+            historyText = " Hist/历史:" + str.tostring(displayLongVolSamples, "#") + "/" + str.tostring(vol_history_days) + "D"
+            row3 := (displayDataReady ? "ADD" + addBar + str.tostring(displayAddS, "#") : "ADD —") + historyText
         else
-            fiBar = f_progressBar(displayFiS + 3, 0, 6, 4)
-            row3 := "FI" + fiBar + str.tostring(displayFiS, "#") + " TW" + twBar + str.tostring(displayTwS, "#")
+            fiBar = f_progressBar(displayFiS, -2, 3, 4)
+            row3 := displayDataReady ? "FI" + fiBar + str.tostring(displayFiS, "#") + " TW" + twBar + str.tostring(displayTwS, "#") : "FI / TW —"
         table.cell(dashboard, 0, 3, row3, bgcolor=c_bg_row, text_color=c_text_dim, text_size=fontSize, text_halign=text.align_left)
 
         // Row 4: Trend + Divergence + Quality (趋势+背离+质量)
-        trendText = displayUptrend ? "↑UP" : "↓DN"
-        trendColor = displayUptrend ? color.lime : color.red
-        divText = displayBullishDiv ? "💎B" : displayBearishDiv ? "💎S" : ""
+        trendText = not displayDataReady ? "—" : displayUptrend ? "↑UP" : "↓DN"
+        trendColor = not displayDataReady ? color.gray : displayUptrend ? color.lime : color.red
+        divText = showAgg ? "" : displayBullishDiv ? "💎B" : displayBearishDiv ? "💎S" : ""
         // 日内模式仅 3 个因子（RSI/Vol/ADD） Intraday mode has only 3 factors (RSI/Vol/ADD)
-        qualityText = displayBuyQuality + str.tostring(displayPosFactor) + (intradayMode ? "/3" : "/4")
+        qualitySide = panelSellActive ? "S/卖:" : "B/买:"
+        qualityText = displayDataReady ? qualitySide + displayPanelQuality + str.tostring(displayPanelFactorCount) + (intradayMode ? "/3" : "/4") : "—"
         row4 = trendText + " " + divText + " " + qualityText
         table.cell(dashboard, 0, 4, row4, bgcolor=c_bg_row, text_color=trendColor, text_size=fontSize, text_halign=text.align_left)
 
         // Row 5: DD + Filter Status (回撤+过滤状态)
         ddText = displayDrawdown >= 1 ? "DD" + str.tostring(displayDrawdown, "#") + "%" : ""
-        bonusText = displayDrawdownBonus > 0 ? "+" + str.tostring(int(displayDrawdownBonus)) : ""
+        bonusText = useDrawdownBonus and displayDrawdownBonus > 0 ? " B/买+" + str.tostring(displayDrawdownBonus, "#.#") : ""
         row5 = ddText + bonusText + " " + filterStatus
         table.cell(dashboard, 0, 5, row5, bgcolor=c_bg_row, text_color=filterColor, text_size=fontSize, text_halign=text.align_left)
 
@@ -1310,26 +1340,6 @@ autoBotResonanceTrig = aggBottomEdgeBar
 autoTopResonanceTrig = aggTopEdgeBar
 alertTickerLabel = showSpy ? "SPY" : showQqq ? "QQQ" : showIwm ? "IWM" : showAgg ? "AGG" : syminfo.ticker
 
-// 信号等级函数 (优先级越高值越大)
-// 5=恐慌+共振 | 4=恐慌低点 | 3=共振 | 2=背离 | 1=低吸/观望
-f_buy_level(_strongBot, _bot, _resonance, _div) =>
-    // 仅在当前显示路径已有主买入触发时才允许 Lv2/Lv3 升级，避免“只提醒不落图”
-    // Only allow Lv2/Lv3 upgrades when a visible base buy trigger exists on the current display path.
-    hasBaseBuy = _strongBot or _bot
-    if not hasBaseBuy
-        0
-    else
-        _strongBot and _resonance ? 5 : _strongBot ? 4 : _resonance ? 3 : _div ? 2 : 1
-
-f_sell_level(_strongTop, _top, _resonance, _div, _elevated) =>
-    // 仅在当前显示路径已有主风险触发时才允许 Lv2/Lv3 升级，避免“只提醒不落图”
-    // Only allow Lv2/Lv3 upgrades when a visible base risk trigger exists on the current display path.
-    hasBaseSell = _strongTop or _top or _elevated
-    if not hasBaseSell
-        0
-    else
-        _strongTop and _resonance ? 5 : _strongTop ? 4 : _resonance ? 3 : _div ? 2 : 1
-
 // varip: 在实时K线的多次重算间保留状态，避免 rollback 导致同级别警报重复触发
 varip int buy_alert_level_sent = 0
 varip int sell_alert_level_sent = 0
@@ -1359,8 +1369,8 @@ if observed_display_path != display_path_id
     observed_buy_level := 0
     observed_sell_level := 0
 
-int visible_buy_level_now = f_buy_level(autoStrongBotTrig, autoBotTrig, autoBotResonanceTrig, autoBullishDivTrig)
-int visible_sell_level_now = f_sell_level(autoStrongTopTrig, autoTopTrig, autoTopResonanceTrig, autoBearishDivTrig, autoElevatedTrig)
+int visible_buy_level_now = displayBuyEventLevel
+int visible_sell_level_now = displaySellEventLevel
 
 // Realtime alerts should key off the latest bar's first visible K-line state.
 // Once this bar has visibly shown a level, later historical backfill should not cancel that reminder.
@@ -1387,9 +1397,9 @@ if not live_intraday_latch_mode
     buy_alert_latched_level := 0
     sell_alert_latched_level := 0
     live_alert_session_day := na
-    if barstate.isnew and not prev_buy_side_active
+    if barstate.isnew and displayDataReady[1] and not prev_buy_side_active
         buy_alert_level_published := 0
-    if barstate.isnew and not prev_sell_side_active
+    if barstate.isnew and displayDataReady[1] and not prev_sell_side_active
         sell_alert_level_published := 0
 else if new_live_intraday_session
     buy_alert_armed := true
@@ -1400,23 +1410,18 @@ else if new_live_intraday_session
 
 // 日内智能警报仅在常规交易时段触发，避免盘后 1 分钟图用冻结广度反复提醒
 // Intraday smart alerts only fire during regular market hours to avoid repeated after-hours alerts on frozen breadth data
-if enable_smart_alert and regular_session_alerts
+if enable_smart_alert and barstate.isrealtime and regular_session_alerts and displayDataReady
     // === 买入信号 ===
     // 触发条件：当前最新K线首次可见 / 跨K线升级；同一根K线只允许发布一次，避免重复提醒
     // Trigger: latest bar first visible signal / cross-bar upgrade; allow only one smart alert per bar to prevent repeats.
     should_alert_buy_base = buy_signal_active and current_buy_level >= min_alert_level and current_buy_level > buy_alert_level_sent and (live_intraday_latch_mode ? (buy_alert_armed or current_buy_level > buy_alert_latched_level) : current_buy_level > buy_alert_level_published)
     should_alert_sell_base = sell_signal_active and current_sell_level >= min_alert_level and current_sell_level > sell_alert_level_sent and (live_intraday_latch_mode ? (sell_alert_armed or current_sell_level > sell_alert_latched_level) : current_sell_level > sell_alert_level_published)
 
-    should_alert_buy = should_alert_buy_base
-    should_alert_sell = should_alert_sell_base
-
-    // 若买卖同tick都满足，只发布等级更高的一侧
-    // If both sides qualify on the same tick, publish only the higher-level side.
-    if should_alert_buy_base and should_alert_sell_base
-        if current_sell_level > current_buy_level
-            should_alert_buy := false
-        else
-            should_alert_sell := false
+    // Resolve visible sides before deduplication, exactly as the panel and zone do.
+    // 先按可见事件裁决方向，再判断去重资格，与面板和区间保持一致。
+    publish_side = f_eventSide(current_buy_level, current_sell_level)
+    should_alert_buy = should_alert_buy_base and publish_side == 1
+    should_alert_sell = should_alert_sell_base and publish_side == -1
 
     if not smart_alert_fired_this_bar
         if should_alert_buy
@@ -1467,7 +1472,7 @@ if enable_smart_alert and regular_session_alerts
 
             // v7.0 Context info (score + trend)
             trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
-            msg := msg + str.format("| Score:{0,number,#.1} {1}", displayScore, trend_ctx)
+            msg := msg + str.format("| Score:{0,number,#.1} ({1}) {2}", displaySellScore, displaySellQuality, trend_ctx)
 
             alert(msg, alert.freq_all)
             smart_alert_fired_this_bar := true

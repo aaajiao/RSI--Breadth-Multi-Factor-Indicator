@@ -8,7 +8,7 @@
 |------|-------|
 | **Language** | Pine Script v6 |
 | **Main file** | `RSI+` |
-| **Current version** | `v7.5` |
+| **Current version** | `v7.6` |
 | **Primary markets** | `SPY`, `QQQ`, `IWM` |
 | **Use case** | US index market timing |
 
@@ -29,15 +29,23 @@ The script is a multi-factor indicator that combines:
 | File | Role |
 |------|------|
 | `RSI+` | Source of truth for behavior |
-| `README.md` | User-facing documentation; must match the script |
+| `README.md` | English user documentation; must match the script |
+| `docs/README_CN.md` | Chinese user documentation; update with README |
+| `tests/` | Standard-library Python regression checks; not a Pine compiler |
 | `CLAUDE.md` | Claude Code entrypoint that imports this file |
 | `AGENTS.md` | Agent-facing implementation guidance |
 
-If script behavior changes, update `README.md` and `AGENTS.md` in the same change.
+If script behavior changes, update `README.md`, `docs/README_CN.md`, and `AGENTS.md` in the same change.
 
 ## Build / Test
 
-There is no local Pine build or test runner in this repo.
+There is no local Pine compiler in this repo. Run the local behavioral checks with:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+The suite evaluates a deliberately limited subset of real source helpers and state blocks, plus source wiring contracts. It does not emulate TradingView feeds, Pine's full type system, rollback engine, request scheduling, or chart rendering. Never describe it as a Pine compile, a backtest, or realtime validation.
 
 Manual validation workflow:
 
@@ -47,6 +55,21 @@ Manual validation workflow:
 4. Validate behavior on `SPY`, `QQQ`, `IWM`
 5. Check both dashboard modes
 6. Check buy, risk, divergence, resonance, and alert behavior
+
+## v7.6 Implementation Contract
+
+- Each market owns its adaptive RSI bands, chart-bar lookback and ordinary/divergence cooldowns. Do not reintroduce host-chart `driverRSI` coupling.
+- Long volatility uses 126/252/504 **confirmed daily RSI samples**, not a capped intraday-bar approximation. `f_dailyMarketStats()` returns the previous confirmed 252-day closing high, daily RSI standard deviation and available sample count in one request.
+- `f_secDailyLive()` now returns `[confirmed, developing]` in one tuple request. Only its developing leg may use unoffset daily lookahead; all market-stat tuple legs use `[1]`.
+- `f_marketAdaptive()` returns per-market bands, `AdaptiveLookback`, `AdaptiveReady`, `LongVolReady`, effective `UseAdaptive`, `CooldownBars`, `DivCooldownBars`, and `AdaptiveRequested`. Distinguish requested adaptive mode from effective adaptive mode when displaying a fixed-band fallback.
+- Statistical warmup uses shorter-term volatility and valid positive lookback lengths. Unavailable or collapsed percentile bands fall back to strictly ordered fixed RSI bands. `Fixed` threshold mode does not show a statistics warmup warning.
+- `DataReady` requires price, RSI, trend, confirmed high and actual scored breadth/volume sources. Missing/invalid source symbols become `na` and block new events; missing values must not silently become neutral signals. ADD still preserves its accepted previous-value na guard.
+- Missing inputs must not clear accepted panel/zone state or re-arm non-live alert deduplication. HOLD exits and prior-side re-arm checks require valid data; hide the background while unavailable.
+- AGG requires all three markets ready because its displayed context averages all three. Individual-market paths require only that market's sources.
+- Only seconds/minutes and exactly 1D charts are supported. Explicitly reject tick and higher-than-1D charts before requests; `timeframe.isintraday` alone also includes tick charts.
+- RSI Length is 2–250, keeping its largest derived window at 1000 bars inside `max_bars_back=1100`. Fixed bands must satisfy OS1 < OS2 < OB2 < OB1 even in Auto/Adaptive mode because they serve as fallback.
+- Keep theoretical scoring/percent inputs compatible; bound final buy/risk weak thresholds to >=1 / <=-1 and keep strong thresholds at least 1 point more extreme. Drawdown/assist can still cause both sides to qualify, so event arbitration remains necessary.
+- `minAgree` controls resonance and its display bonus. A single market with `minAgree=1` may trigger AGG, but has strength 1 and no resonance score bonus.
 
 ## Current Script Defaults
 
@@ -156,6 +179,7 @@ Mode adjustments:
 - `Aggressive` -> subtracts 1 from buy thresholds and adds 1 to sell thresholds
 - `Conservative` -> inverse of aggressive
 - `Intraday` -> applies an extra 2-point sensitivity adjustment
+- After adjustments: weak buy >= +1, weak risk <= -1; strong buy >= weak buy +1, strong risk <= weak risk -1. Defaults on standard daily charts remain unchanged.
 
 ## Signal Semantics
 
@@ -188,7 +212,13 @@ These functions define the main behavior and should be preserved when refactorin
 | `f_sec()` | Session-aware intraday security request |
 | `f_ohlc()` | Session-aware OHLC request helper |
 | `f_secDaily()` | Previous confirmed daily data request |
-| `f_secDailyLive()` | Developing daily data for intraday alerts |
+| `f_secDailyLive()` | Tuple of previous confirmed and developing daily data |
+| `f_dailyMarketStats()` | Confirmed daily high, long volatility and sample count |
+| `f_marketAdaptive()` | Independent per-market adaptive settings and cooldowns |
+| `f_adaptiveLookback()` | Positive, available-history-bounded chart-bar lookback |
+| `f_marketDataReady()` | Required price and scoring-input readiness |
+| `f_qualityGrade()` | Grade from the displayed aligned-factor count |
+| `f_eventSide()` | Shared highest-visible-level side selection; buy wins ties |
 | `f_dynamicCooldown()` | Volatility-based cooldown adjustment |
 | `f_signalQuality()` | A/B/C signal quality grading |
 | `f_drawdownBonus()` | Buy-side drawdown bonus |
@@ -205,7 +235,7 @@ These functions define the main behavior and should be preserved when refactorin
 | `f_generateSignals()` | Buy/sell/elevated state generation |
 | `f_progressBar()` | Horizontal factor bar |
 | `f_centeredBar()` | Centered score bar |
-| `f_marketStatus()` | Three-market status icon |
+| `f_marketStatus()` | Ready-aware raw buy/sell score status icon; risk takes precedence |
 
 ## Dashboard Reference
 
@@ -214,18 +244,18 @@ The actual rendered layouts in `RSI+` are:
 ### Full Mode
 
 - `7 rows x 1 column`
-- Row 0: signal + score + trend
+- Row 0: accepted signal + side-appropriate current score + trend; WAIT DATA replaces unavailable context
 - Row 1: centered score bar
 - Row 2: RSI + volume
-- Row 3: `FI + TW` in daily mode, `ADD + TW` in intraday mode; the compact `TW` slot still renders in intraday mode even though `ADD` drives the breadth score there
-- Row 4: trend + divergence + quality; the quality factor count renders as `x/4` in daily mode and `x/3` in intraday mode (3 factors: RSI / Vol / ADD)
-- Row 5: drawdown + filter status
-- Row 6: `SPY / QQQ / IWM` status + resonance icon
+- Row 3: `FI + TW` in daily mode; `ADD + Hist/历史:available/targetD` in intraday mode. AGG history coverage is the smallest available count among the three markets
+- Row 4: trend + divergence + current factor quality for the panel side (`B/买` or `S/卖`), `x/4` daily or `x/3` intraday. AGG grades its floored mean aligned count and does not show hidden divergence events; missing data shows no trend/quality
+- Row 5: drawdown + enabled buy-only bonus + filter/data status; disabling Drawdown Bonus hides its annotation
+- Row 6: `SPY / QQQ / IWM` raw factor status + resonance icon. Gray = data unavailable; red = raw sell threshold; otherwise green = buy threshold, yellow = neutral. These dots do not apply trend/quality gates
 
 ### Mobile Mode
 
 - `2 rows x 1 column`
-- Row 0: signal + score + trend
+- Row 0: accepted signal + side-appropriate current score + trend; WAIT DATA replaces unavailable context
 - Row 1: filter status
 
 Do not document old `11-row` or `3-row` layouts. The current output code is `7` and `2`.
@@ -236,6 +266,8 @@ Do not document old `11-row` or `3-row` layouts. The current output code is `7` 
 
 | Label | Meaning |
 |------|------|
+| `WAIT DATA / 等待数据` | required inputs missing; new signals blocked |
+| `WARMUP / 预热` | adaptive statistical fallback in use; signals may still pass |
 | `👀` | no active filter block |
 | `✋ WAIT` | buy-zone score exists but signal is filtered out |
 | `☕ HOLD` | sell threshold hit but uptrend blocks the sell |
@@ -247,7 +279,9 @@ Sell-side comparisons for `☕ HOLD` and for hold-zone / zone-exit detection use
 
 Dashboard main signal rules that matter:
 
-- In `SPY / QQQ / IWM` display modes, the panel's main `signalText` / emoji must follow the latest plotted K-line signal state, not a separate raw-score-only state machine.
+- The panel, background and alert side use the same highest visible event level on the current bar via `f_eventSide()`; buy wins ties. Both accepted opposite-side markers remain plotted. A later same-bar upgrade may change the panel but must not publish a second alert.
+- Risk panel states and risk alert messages use raw `displaySellScore` and sell quality; buy/neutral panel states retain the buy score.
+- AGG shows RESONANCE rather than hidden strong/divergence states. ELEVATED enters the risk background zone.
 
 Smart Alert V2 levels:
 
@@ -261,7 +295,9 @@ Smart Alert V2 levels:
 
 Implementation details that matter:
 
-- Smart alerts must reuse the plotted `Trig / Edge` signals (`spyBotTrig`, `spyTopTrig`, `aggBottomEdge`, divergence/elevated edges, etc.); do not drive published alerts directly from raw active state.
+- Smart alerts reuse accepted, bar-latched plotted events and resonance edges. Ordinary cooldowns, divergence cooldowns, and `f_recent()` windows also consume those same accepted events, never transient raw triggers.
+- After latching, replay the accepted event into ordinary `var` last-bar/last-level records on every tick so Pine commits it even if raw conditions fade on the closing tick. Strong upgrades reset the relevant cooldown and enter resonance history. Track last accepted marker level to prevent reclassifying a retained strong event as another upgrade.
+- Only realtime, ready, session-eligible publication may advance alert sent/published/latched levels. Historical evaluation must not consume notification state.
 - Smart alerts must follow the currently displayed K-line signal path under `Display Mode`; manual `SPY / QQQ / IWM / AGG` selection must not leave alerts on a different symbol/state than the visible markers.
 - `Lv2 (DIVERGENCE)` / `Lv3 (RESONANCE)` are upgrade tags that require an existing visible base buy/risk trigger on the current display path; do not publish hidden standalone divergence-only or resonance-only alerts.
 - Smart alerts should publish when the latest realtime bar first shows a visible trigger level on that tick; later historical backfill may reshape prior bars, but it must not cancel or replay that reminder.
@@ -293,13 +329,13 @@ f_intradayTicker(_sym) =>
     intradayMode ? ticker.modify(_sym, syminfo.session) : _sym
 
 f_sec(_sym, _expr) =>
-    request.security(f_intradayTicker(_sym), tfData, _expr, intradayMode ? barmerge.gaps_on : barmerge.gaps_off, barmerge.lookahead_off)
+    request.security(f_intradayTicker(_sym), tfData, _expr, intradayMode ? barmerge.gaps_on : barmerge.gaps_off, barmerge.lookahead_off, ignore_invalid_symbol=true)
 
 f_secDaily(_sym, _expr) =>
-    request.security(_sym, "D", _expr[1], barmerge.gaps_off, barmerge.lookahead_on)
+    request.security(_sym, "D", _expr[1], barmerge.gaps_off, barmerge.lookahead_on, ignore_invalid_symbol=true)
 
 f_secDailyLive(_sym, _expr) =>
-    request.security(_sym, "D", _expr, barmerge.gaps_off, barmerge.lookahead_on)
+    request.security(_sym, "D", [_expr[1], _expr], barmerge.gaps_off, barmerge.lookahead_on, ignore_invalid_symbol=true)
 ```
 
 Rules:
@@ -330,7 +366,7 @@ Always guard:
 
 - `na` values before comparisons
 - divisions with zero checks
-- lookback length with `math.min(..., bar_index)`
+- lookback length with a defined positive fallback and an available-history bound; never pass `na` or 0
 - multi-line ternaries by keeping them on one line
 - cross-scope assignment by declaring variables first and using `:=`
 
@@ -347,11 +383,12 @@ Always guard:
 Accepted design constraints; do not describe them as bugs or silently "fix" them:
 
 - Historical intraday bars read end-of-day daily breadth values through `f_secDailyLive()` lookahead, so historical intraday markers can look better than what realtime would have shown; realtime alerts use developing values. Historical markers are not a backtest of live behavior.
-- On daily charts, breadth/volume factors come from the previous confirmed day (`f_secDaily()`, 1-day lag); the `useLiveData` option only affects intraday charts.
+- On daily charts, breadth/volume factors come from the previous confirmed daily leg (1-day lag); the `useLiveData` option only affects intraday charts.
 - Futures tickers (`ES` / `NQ` / `RTY` etc.) are detected best-effort; session gating and breadth freezing are designed for US equity regular hours and are not validated for futures sessions.
 
 ## Validation Checklist
 
+- [ ] Python regression suite passes
 - [ ] Script compiles in TradingView
 - [ ] SPY / QQQ / IWM logic still works
 - [ ] Daily and intraday paths both behave correctly
@@ -359,4 +396,11 @@ Accepted design constraints; do not describe them as bugs or silently "fix" them
 - [ ] RTH-only intraday charts re-arm latched live alerts on the first regular-session bar of each new trading day
 - [ ] Dashboard Full/Mobile output matches docs
 - [ ] Alert labels and thresholds match docs
-- [ ] README updated when behavior changes
+- [ ] Intrabar trigger/fade preserves cooldown and resonance history
+- [ ] Historical loading does not consume live reminder state
+- [ ] Same-bar opposite sides use the shared event-level selection
+- [ ] Per-market adaptive settings, actual daily history count and warmup display are correct
+- [ ] Full/Mobile risk score and factor grade use sell context
+- [ ] Input bounds and supported-timeframe errors are clear
+- [ ] Both README languages updated when behavior changes
+- [ ] Existing TradingView alerts recreated after the new script compiles (alerts retain their original script/input snapshot)

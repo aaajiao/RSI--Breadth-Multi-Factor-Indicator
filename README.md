@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v7.5
+# RSI+ Breadth Multi-Factor Indicator v7.6
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -26,6 +26,19 @@ The current `RSI+` script implements these modules:
 - **Dashboard**: compact `Full` and `Mobile` modes.
 - **Smart alerts V2**: level-based alerts keyed to the latest bar's first visible K-line signal, with bar-level dedup and cross-bar upgrade logic.
 
+### v7.6 Reliability and Adaptive Updates
+
+- Only realtime publications consume alert state. Loading historical bars cannot mute the first subsequent live reminder.
+- Intrabar events retained on the chart also update cooldowns and resonance history, including strict strong-signal upgrades and divergence cooldowns.
+- The panel, signal background, and alert side use the highest visible event level on the current bar; equal levels favor buy. Both accepted chart markers remain visible if opposite sides fired intrabar. The first notification is retained: a later same-bar upgrade does not send a second notification.
+- Lookback lengths (`Auto`, `Fixed 252`, `Custom`) count current-chart bars; `Fixed 252` means 252 chart bars, not one calendar year on intraday charts.
+- Each market computes its own adaptive bands, lookback, and cooldown. Manual display selection does not switch another market's volatility into its calculations.
+- `Vol History` now means **126 / 252 / 504 confirmed daily RSI samples** for `6 Months / 1 Year / 2 Years`. This daily baseline is combined with each market's current-chart RSI volatility. It is no longer capped to the same 1000 intraday bars for all settings. This changes intraday adaptive results compared with v7.5.
+- A temporary data gap preserves accepted panel/zone state and does not re-arm daily/confirmed-mode alerts. The UI shows WAIT DATA and hides the background until inputs recover; only a valid HOLD condition may clear the retained state.
+- During statistical warmup, Auto lookback uses available shorter-term volatility; unavailable adaptive bands fall back to the configured fixed bands. Missing required price or factor data blocks new signals and shows `WAIT DATA / 等待数据`.
+- Confirmed/developing values share a daily tuple request per breadth source. Daily market context also batches the confirmed 252-day closing high, long-term volatility, and sample count. No speedup percentage has been measured in Pine Profiler.
+- Supported chart intervals are time-based intraday bars and **1D**. Multi-day, weekly, monthly, and tick charts are rejected explicitly. Fixed RSI bands must be strictly ordered; RSI Length is limited to 2–250 to fit the history buffer.
+
 ### Markets and Data Sources
 
 - **Tracked markets**: `SPY`, `QQQ`, `IWM`
@@ -37,7 +50,7 @@ The current `RSI+` script implements these modules:
   - NYSE: `UVOL`, `DVOL`
   - NASDAQ: `UVOLQ`, `DVOLQ`
 - **Intraday breadth proxy**: `ADD`; during the regular session, missing ADD values fall back to the previous valid value (na-guard) so the score does not transiently drop, and the last regular-session value is frozen after the close
-- **Confirmed daily helper**: `f_secDaily()` now returns the previous fully confirmed daily value
+- **Confirmed daily data**: the confirmed leg of `f_secDailyLive()` and the `f_secDaily()` helper use the previous fully confirmed daily value
 - **Intraday live alert mode**: `f_secDailyLive()` can use developing daily values during regular market hours, then freezes breadth/volume snapshots after the close
 - **Intraday session handling**: SPY / QQQ / IWM / ADD intraday requests inherit the chart session modifier so extended-hours charts only react to real post-market bars
 
@@ -69,6 +82,7 @@ Mode adjustments:
 - `Aggressive`: lowers buy thresholds and relaxes sell thresholds by 1 point
 - `Conservative`: raises buy thresholds and tightens sell thresholds by 1 point
 - `Intraday`: applies an extra 2-point sensitivity adjustment
+- Final weak thresholds are bounded to buy `>= +1` and risk `<= -1`; strong thresholds stay at least 1 point beyond the corresponding weak threshold. Standard daily defaults remain `4 / 6 / -4 / -6`. Opposite sides can still coincide because buy scores may include a drawdown bonus or divergence assist; the event-level arbitration above handles that case.
 
 ### Signal Reference
 
@@ -84,8 +98,8 @@ The script currently uses the following signal names and emojis:
 | Strong risk | `sellScore <= adjStrongTopThreshold` in non-uptrend | `⚠️` | `REDUCE` | Highest sell/risk state |
 | Bullish divergence | `divStrength < -threshold` and RSI below `OS2` | `💎` | `DIVERGENCE` | Reversal assist / confirmation |
 | Bearish divergence | `divStrength > threshold` and RSI above `OB2` | `💎` | `DIVERGENCE` | Risk reversal warning |
-| Buy resonance | 2+ markets align in buy window | `🔥` | `RESONANCE` | Multi-market long confirmation |
-| Risk resonance | 2+ markets align in risk window | `❄️` | `RESONANCE` | Multi-market risk confirmation |
+| Buy resonance | `minAgree` markets align in buy window (default 2) | `🔥` | `RESONANCE` | Multi-market long confirmation |
+| Risk resonance | `minAgree` markets align in risk window (default 2) | `❄️` | `RESONANCE` | Multi-market risk confirmation |
 
 Important behavior:
 
@@ -114,7 +128,7 @@ When `Signal Quality Filter` is enabled, only `A` and `B` signals can trigger bu
 - `>= 10%` drawdown: `+2`
 - `>= 20%` drawdown: `+3`
 
-This bonus affects buy evaluation and dashboard score, but not sell-side thresholds.
+This bonus affects buy evaluation and the buy/neutral dashboard score. Risk panel states and risk alerts use the raw sell score. The DD row labels any enabled bonus as buy-side only; disabling the bonus removes that annotation.
 
 #### Divergence Assist
 
@@ -143,10 +157,10 @@ Actual layout in code: **7 rows x 1 column**
 | 0 | Signal + score + trend, e.g. `🚀 PANIC LOW +6.5↑` |
 | 1 | Centered score bar |
 | 2 | RSI score + volume score |
-| 3 | `FI + TW` in daily mode, or `ADD + TW` in intraday mode; current code keeps the compact `TW` slot even though intraday breadth scoring is driven by `ADD` |
-| 4 | Trend + divergence + quality, e.g. `↑UP 💎B A3/4`; the quality cell shows `/3` in intraday mode (3 factors: RSI/Vol/ADD) and `/4` in daily mode |
-| 5 | Drawdown + filter status, e.g. `DD8%+2 ✋ WAIT` |
-| 6 | `SPY/QQQ/IWM` status plus resonance icon |
+| 3 | Daily: `FI + TW`; intraday: `ADD` plus actual confirmed daily RSI history coverage, e.g. `Hist/历史:126/252D` |
+| 4 | Trend + divergence + current factor quality for the panel side (`B/买` or `S/卖`); `/3` intraday, `/4` daily. AGG grades its floored mean aligned-factor count and does not display hidden divergence events |
+| 5 | Drawdown + enabled buy-only bonus + filter/data status, e.g. `DD8% B/买+1` |
+| 6 | Raw factor status for `SPY/QQQ/IWM` plus resonance icon; gray = data unavailable, red = raw sell threshold met, otherwise green = buy threshold met, yellow = neutral. These dots do not apply signal-quality or trend filters |
 
 #### Mobile Mode
 
@@ -161,6 +175,8 @@ Actual layout in code: **2 rows x 1 column**
 
 | Display | Condition in script | Meaning |
 |---|---|---|
+| `WAIT DATA / 等待数据` | Required price/factor data missing | New signals disabled |
+| `WARMUP / 预热` | Adaptive statistics still warming up | Shorter-term volatility or fixed RSI bands in use |
 | `👀` | No active filter block | Watching |
 | `✋ WAIT` | Score reaches buy zone but signal is filtered | Buy score is there, confirmation is not |
 | `☕ HOLD` | Raw sell score (no drawdown bonus) reaches sell threshold, but uptrend blocks sell signal | Trend says hold risk cautiously |
@@ -176,8 +192,8 @@ Two consistency details:
 `filterStatus` and the main signal line do different jobs:
 
 - `filterStatus` tells you whether the setup is being blocked by a filter.
-- In `SPY / QQQ / IWM` display modes, `signalText` follows the latest plotted chart signal state, so the dashboard stays aligned with the K-line marker sequence.
-- On realtime bars, once a plotted buy/risk marker fires intrabar, the dashboard keeps that bar's latest plotted state instead of reverting if the raw condition fades before close.
+- In `SPY / QQQ / IWM` display modes, `signalText` follows the latest plotted chart signal state, with same-bar conflicts resolved by visible event level.
+- On realtime bars, accepted markers survive a raw-condition fade. If both sides are visible, the dashboard uses the higher event level (buy on a tie); `ELEVATED` also enters the risk background zone. AGG displays `RESONANCE` and only publishes Lv3.
 - `signalText` tells you the current displayed market state: `PANIC LOW`, `BUY ZONE`, `HOLD`, `ELEVATED`, `CAUTION`, or `REDUCE`.
 
 Read them together:
@@ -228,7 +244,7 @@ Alert behavior:
 These limitations are inherent to the current design and worth knowing before trusting historical markers:
 
 - **Historical intraday markers are not a backtest.** On intraday charts, historical bars use end-of-day daily breadth values (`f_secDailyLive()` requests with lookahead), so historical intraday markers can look better than what realtime would have shown. Realtime alerts use developing values instead.
-- **Daily charts lag breadth by one day.** On daily charts, breadth and volume factors come from the previous confirmed day via `f_secDaily()`. The `Live Alert Data` option only affects intraday charts.
+- **Daily charts lag breadth by one day.** On daily charts, breadth and volume factors come from the previous confirmed day through the confirmed daily request leg. The `Live Alert Data` option only affects intraday charts.
 - **Futures support is best-effort.** Futures tickers (`ES` / `NQ` / `RTY` etc.) are detected best-effort by ticker matching. Session gating and breadth freezing are designed for US equity regular hours and are not validated for futures sessions.
 
 ### Recommended Defaults
@@ -259,7 +275,13 @@ Current defaults in the script:
 
 ### Validation
 
-Pine Script has no local build system in this repo. Validation is manual:
+Local behavioral regression checks use the Python standard library:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+These checks exercise selected source helpers, state transitions, and source wiring. They are **not a Pine compiler**, a TradingView execution engine, a performance benchmark, or a strategy backtest. TradingView compilation and chart validation remain required:
 
 1. Copy `RSI+` into TradingView Pine Editor
 2. Click `Add to Chart`
@@ -268,6 +290,10 @@ Pine Script has no local build system in this repo. Validation is manual:
 5. Check buy, risk, divergence, and resonance labels against the script logic above
 6. On extended-hours intraday charts, confirm there are no after-hours smart alerts after the regular close
 7. On RTH-only intraday charts with `Live Alert Data`, confirm same-side alert latches re-arm on the first regular-session bar of a new trading day
+8. Create a fresh alert mid-session after historical signals; verify that history has not consumed live notification state
+9. Verify intrabar trigger/fade, cooldown, resonance window, weak-to-strong upgrade, and opposite-side events; historical replay alone cannot reconstruct realtime ticks
+10. Compare manual QQQ display on SPY/QQQ charts with the same timeframe/session, check all Vol History settings, warmup, and rejected input combinations
+11. After compiling an updated script, recreate running TradingView alerts: existing alerts retain the script/input snapshot from their creation
 
 ---
 
@@ -275,4 +301,4 @@ Pine Script has no local build system in this repo. Validation is manual:
 
 This indicator is for educational purposes only. Past performance does not guarantee future results.
 
-**Version**: 7.5 | **Pine Script**: v6 | **Updated**: 2026-06-10
+**Version**: 7.6 | **Pine Script**: v6 | **Updated**: 2026-09-12
