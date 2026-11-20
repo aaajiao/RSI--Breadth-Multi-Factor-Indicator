@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v7.7 中文文档
+# RSI+ Breadth Multi-Factor Indicator v7.8 中文文档
 
 [English README](../README.md) | 中文
 
@@ -21,6 +21,15 @@ RSI+ 是一个面向美股指数市场的 Pine Script v6 择时指标。当前�
 - **多市场共振**：检测 SPY / QQQ / IWM 是否同步
 - **面板系统**：`Full` 与 `Mobile` 两种模式
 - **Smart Alerts V2**：按等级触发，单根 K 线去重，跨 K 线允许严格升级
+
+## v7.8 数据窗口分数与提醒分数格式
+
+- 新增三个数据窗口输出：`SPY Buy Score`、`QQQ Buy Score`、`IWM Buy Score`。每个是该市场含回撤加分的买入分，也就是和 `BUY ZONE` / `PANIC LOW` 阈值比较的那个值；该市场数据未就绪时为 `na`。
+- 它们不在图上绘制，不影响价格坐标。在 TradingView 的数据窗口里看，或用任何能返回 plot 数值的工具读取。
+- 冷却或信号质量过滤拦下标记和提醒时，分数照常显示。一个市场可以连续多根 K 线处在买入分数而没有新提醒；「没有提醒」不等于「没有分数」。
+- 只输出各市场的买入分：不含共振加分，不做 `AGG` 平均，也不含卖出侧分数。
+- 提醒消息里的分数改用 `#.#` 格式。原来的 `#.1` 会在数字后面原样带出 `.1`，6 分显示成 `Score:6.1`；现在显示 `Score:6`。`AGG` 的平均分保留一位小数，例如 `Score:4.3`。
+- 计算、阈值、冷却和提醒触发逻辑都不变。新增的 plot 追加在全部已有 plot 之后，已有 plot 的顺序不变。已创建的 TradingView 提醒在更新之前仍使用旧的脚本快照。
 
 ## v7.7 TradingView MCP 兼容
 

@@ -163,3 +163,20 @@ class EventWiringTests(unittest.TestCase):
             self.assertEqual(self.pine.assignment("trendText", env), "—")
             self.assertEqual(self.pine.assignment("scoreWithTrend", env), "")
             self.assertEqual(self.pine.assignment("scoreStr", env), "")
+
+    def test_per_market_buy_scores_are_appended_data_window_plots(self):
+        source = self.pine.source
+        positions = []
+        for market in ("spy", "qqq", "iwm"):
+            line = (f'plot({market}DataReady ? {market}BuyScore : na, title="{market.upper()} Buy Score 买入分", '
+                    'display=display.data_window, editable=false)')
+            self.assertEqual(source.count(line), 1)
+            positions.append(source.index(line))
+        self.assertEqual(positions, sorted(positions))
+        # External readers address plots by position: the score plots stay after every marker and background.
+        self.assertGreater(positions[0], source.rindex("plotshape("))
+        self.assertGreater(positions[0], source.rindex("bgcolor("))
+
+    def test_alert_score_format_prints_no_literal_digit(self):
+        self.assertNotIn("#.1}", self.pine.source)
+        self.assertEqual(self.pine.source.count("Score:{0,number,#.#}"), 2)

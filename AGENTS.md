@@ -8,7 +8,7 @@
 |------|-------|
 | **Language** | Pine Script v6 |
 | **Main file** | `RSI+` |
-| **Current version** | `v7.7` |
+| **Current version** | `v7.8` |
 | **Primary markets** | `SPY`, `QQQ`, `IWM` |
 | **Use case** | US index market timing |
 
@@ -61,6 +61,11 @@ Manual validation workflow:
 v7.7 keeps this contract and adds one rule:
 
 - Declare symbol inputs with `input.string`, never `input.symbol`. The TradingView MCP server returns `symbol_not_auth` for any script that requests an `input.symbol` value, while the same symbols as plain strings load normally. Keep defaults as full `EXCHANGE:TICKER` strings and keep `ignore_invalid_symbol=true` on every request.
+
+v7.8 keeps both and adds two rules:
+
+- Per-market buy scores are exposed through three Data Window-only plots (`SPY Buy Score`, `QQQ Buy Score`, `IWM Buy Score`, `display=display.data_window`). They output `spyBuyScore` / `qqqBuyScore` / `iwmBuyScore` (drawdown bonus included; no resonance bonus, no AGG averaging) and must be `na` while that market's `DataReady` is false. External readers such as the TradingView MCP `run_pine_indicator` tool address plots by position and title: append new plots after all existing ones, never insert before or reorder them, and do not rename these three.
+- Format alert scores with `#.#`. In `str.format` number patterns use only `0` and `#` as digit placeholders: `#.1` printed a literal `.1` after the number (a score of 6 read `Score:6.1`).
 
 - Each market owns its adaptive RSI bands, chart-bar lookback and ordinary/divergence cooldowns. Do not reintroduce host-chart `driverRSI` coupling.
 - Long volatility uses 126/252/504 **confirmed daily RSI samples**, not a capped intraday-bar approximation. `f_dailyMarketStats()` returns the previous confirmed 252-day closing high, daily RSI standard deviation and available sample count in one request.

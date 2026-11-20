@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v7.7", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.8", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -1148,6 +1148,16 @@ plotshape(showAgg and aggBottomEdgeBar, title="Resonance Buy", style=shape.label
 plotshape(showAgg and aggTopEdgeBar, title="Resonance Risk", style=shape.labeldown, location=location.abovebar, color=color.new(color.red, 0), textcolor=color.white, text="❄️")
 
 //========================
+// Data Window scores (v7.8)
+//========================
+// v7.8: 三个市场的买入分（含回撤加分）只输出到数据窗口，不在图上绘制、不影响价格坐标；数据未就绪时为 na。冷却或质量过滤拦下标记和提醒时，这里仍显示分数
+// v7.8: per-market buy scores (drawdown bonus included) go to the Data Window only: not drawn on the chart and no effect on the price scale; na while that market's data is not ready. They still show the score when cooldown or the quality filter holds back a marker or alert
+// 新增 plot 只能追加在末尾，不要插到已有 plot 之前 / Append new plots at the end; never insert before existing plots
+plot(spyDataReady ? spyBuyScore : na, title="SPY Buy Score 买入分", display=display.data_window, editable=false)
+plot(qqqDataReady ? qqqBuyScore : na, title="QQQ Buy Score 买入分", display=display.data_window, editable=false)
+plot(iwmDataReady ? iwmBuyScore : na, title="IWM Buy Score 买入分", display=display.data_window, editable=false)
+
+//========================
 // Dashboard
 //========================
 
@@ -1444,7 +1454,7 @@ if enable_smart_alert and barstate.isrealtime and regular_session_alerts and dis
             // v7.0 Context info (quality + drawdown + score)
             trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
             dd_ctx = displayDrawdown >= 5 ? str.format(" DD:{0,number,#}%", displayDrawdown) : ""
-            msg := msg + str.format("| Score:{0,number,#.1} ({1}){2} {3}",
+            msg := msg + str.format("| Score:{0,number,#.#} ({1}){2} {3}",
                 displayScore, displayBuyQuality, dd_ctx, trend_ctx)
 
             alert(msg, alert.freq_all)
@@ -1474,7 +1484,7 @@ if enable_smart_alert and barstate.isrealtime and regular_session_alerts and dis
 
             // v7.0 Context info (score + trend)
             trend_ctx = displayUptrend ? "↑UP" : "↓DOWN"
-            msg := msg + str.format("| Score:{0,number,#.1} ({1}) {2}", displaySellScore, displaySellQuality, trend_ctx)
+            msg := msg + str.format("| Score:{0,number,#.#} ({1}) {2}", displaySellScore, displaySellQuality, trend_ctx)
 
             alert(msg, alert.freq_all)
             smart_alert_fired_this_bar := true

@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v7.7
+# RSI+ Breadth Multi-Factor Indicator v7.8
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -25,6 +25,15 @@ The current `RSI+` script implements these modules:
 - **Resonance engine**: detects multi-market agreement across SPY / QQQ / IWM.
 - **Dashboard**: compact `Full` and `Mobile` modes.
 - **Smart alerts V2**: level-based alerts keyed to the latest bar's first visible K-line signal, with bar-level dedup and cross-bar upgrade logic.
+
+### v7.8 Data Window Scores and Alert Score Format
+
+- Three new Data Window outputs: `SPY Buy Score`, `QQQ Buy Score`, `IWM Buy Score`. Each is that market's buy score including the drawdown bonus, the same value compared against the `BUY ZONE` / `PANIC LOW` thresholds. It is `na` while that market's inputs are not ready.
+- They are not drawn on the chart and do not change the price scale. Read them in TradingView's Data Window, or through any tool that returns plot values.
+- The scores stay visible while a cooldown or the signal quality filter holds back a marker or alert. A market can sit at a buy-level score for several bars without a new alert; "no alert" does not mean "no score".
+- These are per-market buy scores only: no resonance bonus, no `AGG` averaging, and no sell-side score.
+- Alert messages now format the score with `#.#`. The previous pattern `#.1` printed a literal `.1` after the number, so a score of 6 read `Score:6.1`; it now reads `Score:6`. `AGG` averages keep one decimal, such as `Score:4.3`.
+- Calculations, thresholds, cooldowns and alert trigger logic are unchanged. The new plots are appended after all existing plots, so the existing plot order is unchanged. Existing TradingView alerts keep their old script snapshot until you update them.
 
 ### v7.7 TradingView MCP Compatibility
 
