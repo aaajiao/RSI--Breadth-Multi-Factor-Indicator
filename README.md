@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v7.6
+# RSI+ Breadth Multi-Factor Indicator v7.7
 
 [![TradingView](https://img.shields.io/badge/TradingView-Indicator-blue?logo=tradingview)](https://www.tradingview.com/scripts/)
 [![Pine Script](https://img.shields.io/badge/Pine%20Script-v6-brightgreen)](https://www.tradingview.com/pine-script-reference/v6/)
@@ -25,6 +25,11 @@ The current `RSI+` script implements these modules:
 - **Resonance engine**: detects multi-market agreement across SPY / QQQ / IWM.
 - **Dashboard**: compact `Full` and `Mobile` modes.
 - **Smart alerts V2**: level-based alerts keyed to the latest bar's first visible K-line signal, with bar-level dedup and cross-bar upgrade logic.
+
+### v7.7 TradingView MCP Compatibility
+
+- All 14 symbol inputs (SPY / QQQ / IWM, breadth `TW` / `FI`, up/down volume and `ADD`) now use `input.string` instead of `input.symbol`. When this script requested any `input.symbol` value, the TradingView MCP server stopped with `symbol_not_auth`, even though the same symbols loaded normally as plain strings.
+- Defaults, input order and calculations are unchanged. The settings panel no longer shows a symbol picker; type a full `EXCHANGE:TICKER` such as `AMEX:SPY`.
 
 ### v7.6 Reliability and Adaptive Updates
 

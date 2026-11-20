@@ -8,7 +8,7 @@
 |------|-------|
 | **Language** | Pine Script v6 |
 | **Main file** | `RSI+` |
-| **Current version** | `v7.6` |
+| **Current version** | `v7.7` |
 | **Primary markets** | `SPY`, `QQQ`, `IWM` |
 | **Use case** | US index market timing |
 
@@ -57,6 +57,10 @@ Manual validation workflow:
 6. Check buy, risk, divergence, resonance, and alert behavior
 
 ## v7.6 Implementation Contract
+
+v7.7 keeps this contract and adds one rule:
+
+- Declare symbol inputs with `input.string`, never `input.symbol`. The TradingView MCP server returns `symbol_not_auth` for any script that requests an `input.symbol` value, while the same symbols as plain strings load normally. Keep defaults as full `EXCHANGE:TICKER` strings and keep `ignore_invalid_symbol=true` on every request.
 
 - Each market owns its adaptive RSI bands, chart-bar lookback and ordinary/divergence cooldowns. Do not reintroduce host-chart `driverRSI` coupling.
 - Long volatility uses 126/252/504 **confirmed daily RSI samples**, not a capped intraday-bar approximation. `f_dailyMarketStats()` returns the previous confirmed 252-day closing high, daily RSI standard deviation and available sample count in one request.

@@ -1,5 +1,5 @@
 //@version=6
-indicator("RSI+Breadth Multi-Factor v7.6", overlay=true, max_labels_count=500, max_bars_back=1100)
+indicator("RSI+Breadth Multi-Factor v7.7", overlay=true, max_labels_count=500, max_bars_back=1100)
 
 //==============================================================================
 // SIGNAL TERMINOLOGY & EMOJI REFERENCE 信号术语与表情参考
@@ -157,24 +157,26 @@ useTrendFilter = input.bool(true, "Enable Trend Filter 启用趋势过滤", grou
 //========================
 // Symbols
 //========================
+// v7.7: 品种输入改用 input.string：TradingView MCP 服务端遇到 input.symbol 会报 symbol_not_auth。默认值与输入顺序不变，手动填写 EXCHANGE:TICKER
+// v7.7: symbol inputs use input.string because the TradingView MCP server fails with symbol_not_auth on input.symbol. Defaults and input order are unchanged; enter EXCHANGE:TICKER by hand
 grp5 = "Symbols / 标的"
-spySym = input.symbol("AMEX:SPY", "SPY", group=grp5)
-qqqSym = input.symbol("NASDAQ:QQQ", "QQQ", group=grp5)
-iwmSym = input.symbol("AMEX:IWM", "Russell2000 (IWM)", group=grp5)
+spySym = input.string("AMEX:SPY", "SPY", group=grp5)
+qqqSym = input.string("NASDAQ:QQQ", "QQQ", group=grp5)
+iwmSym = input.string("AMEX:IWM", "Russell2000 (IWM)", group=grp5)
 
-s5twSym = input.symbol("INDEX:S5TW", "S5TW (% > 20D MA)", group=grp5)
-s5fiSym = input.symbol("INDEX:S5FI", "S5FI (% > 50D MA)", group=grp5)
-nctwSym = input.symbol("INDEX:NCTW", "NCTW (% > 20D MA)", group=grp5)
-ncfiSym = input.symbol("INDEX:NCFI", "NCFI (% > 50D MA)", group=grp5)
-r2twSym = input.symbol("INDEX:R2TW", "R2TW (% > 20D MA)", group=grp5)
-r2fiSym = input.symbol("INDEX:R2FI", "R2FI (% > 50D MA)", group=grp5)
+s5twSym = input.string("INDEX:S5TW", "S5TW (% > 20D MA)", group=grp5)
+s5fiSym = input.string("INDEX:S5FI", "S5FI (% > 50D MA)", group=grp5)
+nctwSym = input.string("INDEX:NCTW", "NCTW (% > 20D MA)", group=grp5)
+ncfiSym = input.string("INDEX:NCFI", "NCFI (% > 50D MA)", group=grp5)
+r2twSym = input.string("INDEX:R2TW", "R2TW (% > 20D MA)", group=grp5)
+r2fiSym = input.string("INDEX:R2FI", "R2FI (% > 50D MA)", group=grp5)
 
 grp5b = "Volume Breadth 成交量广度"
-uvolSym = input.symbol("USI:UVOL", "Up Volume 上涨量 (NYSE)", group=grp5b)
-dvolSym = input.symbol("USI:DVOL", "Down Volume 下跌量 (NYSE)", group=grp5b)
-uvolqSym = input.symbol("USI:UVOLQ", "Up Volume 上涨量 (NASDAQ)", group=grp5b)
-dvolqSym = input.symbol("USI:DVOLQ", "Down Volume 下跌量 (NASDAQ)", group=grp5b)
-addSym = input.symbol("USI:ADD", "Advance-Decline 涨跌差", group=grp5b, tooltip="日内模式广度 Intraday breadth")
+uvolSym = input.string("USI:UVOL", "Up Volume 上涨量 (NYSE)", group=grp5b)
+dvolSym = input.string("USI:DVOL", "Down Volume 下跌量 (NYSE)", group=grp5b)
+uvolqSym = input.string("USI:UVOLQ", "Up Volume 上涨量 (NASDAQ)", group=grp5b)
+dvolqSym = input.string("USI:DVOLQ", "Down Volume 下跌量 (NASDAQ)", group=grp5b)
+addSym = input.string("USI:ADD", "Advance-Decline 涨跌差", group=grp5b, tooltip="日内模式广度 Intraday breadth")
 
 grp6 = "Plot 显示"
 plotMode = input.string("AUTO", "Display Mode 显示模式", options=["AUTO","SPY","QQQ","IWM","AGG(共振)"], group=grp6)

@@ -1,4 +1,4 @@
-# RSI+ Breadth Multi-Factor Indicator v7.6 中文文档
+# RSI+ Breadth Multi-Factor Indicator v7.7 中文文档
 
 [English README](../README.md) | 中文
 
@@ -21,6 +21,11 @@ RSI+ 是一个面向美股指数市场的 Pine Script v6 择时指标。当前�
 - **多市场共振**：检测 SPY / QQQ / IWM 是否同步
 - **面板系统**：`Full` 与 `Mobile` 两种模式
 - **Smart Alerts V2**：按等级触发，单根 K 线去重，跨 K 线允许严格升级
+
+## v7.7 TradingView MCP 兼容
+
+- 14 个品种输入（SPY / QQQ / IWM、广度 `TW` / `FI`、涨跌量与 `ADD`）由 `input.symbol` 改为 `input.string`。脚本只要请求 `input.symbol` 的值，TradingView MCP 服务端就会报 `symbol_not_auth` 并停止计算；同样的品种写成普通字符串则能正常取数。
+- 默认值、输入顺序和计算逻辑都不变。设置面板里不再有品种选择器，需要手动填写完整的 `EXCHANGE:TICKER`，例如 `AMEX:SPY`。
 
 ## v7.6 可靠性与自适应更新
 
